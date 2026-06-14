@@ -446,6 +446,76 @@
     }
   }
 
+  const TYPE_COMPATIBILITY_RULES = {
+    webpage: { supportsEmbed: true, supportsQuickRead: true, supportsSize: true, supportsDisableSecurity: true },
+    image: { supportsEmbed: false, supportsQuickRead: false, supportsSize: true, supportsDisableSecurity: true },
+    video: { supportsEmbed: false, supportsQuickRead: false, supportsSize: true, supportsDisableSecurity: true },
+    'video-site': { supportsEmbed: true, supportsQuickRead: false, supportsSize: true, supportsDisableSecurity: true },
+    audio: { supportsEmbed: false, supportsQuickRead: false, supportsSize: true, supportsDisableSecurity: true },
+    'audio-site': { supportsEmbed: true, supportsQuickRead: false, supportsSize: true, supportsDisableSecurity: true }
+  };
+
+  function normalizeSuffix(raw) {
+    if (!raw) return '';
+    let s = String(raw).trim();
+    if (s && !s.startsWith('.')) s = '.' + s;
+    return s;
+  }
+
+  function validateRegexPattern(pattern) {
+    if (!pattern) return { valid: false, error: '正则表达式不能为空' };
+    if (pattern.length > 200) return { valid: false, error: '正则表达式长度不能超过 200 字符' };
+    const dangerous = /(\([^)]*[+*?]\)?[+*?])|(\([^)]*\|[^)]*\)[+*?])/;
+    if (dangerous.test(pattern)) return { valid: false, error: '正则包含可能导致 ReDoS 的嵌套量词模式' };
+    if ((pattern.match(/\(/g) || []).length > 10) return { valid: false, error: '正则表达式分组过多' };
+    if ((pattern.match(/\[.*?\]/g) || []).length > 10) return { valid: false, error: '正则表达式字符集过多' };
+    try {
+      new RegExp(pattern);
+      return { valid: true };
+    } catch (e) {
+      return { valid: false, error: '正则表达式语法错误' };
+    }
+  }
+
+  function safeRegexMatch(pattern, str, flags = '') {
+    const v = validateRegexPattern(pattern);
+    if (!v.valid) return false;
+    try {
+      const r = new RegExp(pattern, flags);
+      let done = false;
+      let result = false;
+      const start = Date.now();
+      const t = setTimeout(() => { done = true; }, 50);
+      try {
+        result = r.test(str);
+      } catch (e) {
+        clearTimeout(t);
+        return false;
+      }
+      clearTimeout(t);
+      if (done) return false;
+      if (Date.now() - start > 30) return false;
+      return result;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function filterCompatibleActions(rule) {
+    if (!rule?.actions || !rule.actions.forceType) return rule?.actions || null;
+    const comp = TYPE_COMPATIBILITY_RULES[rule.actions.forceType];
+    if (!comp) return rule.actions;
+    const filtered = { ...rule.actions };
+    if (!comp.supportsEmbed) filtered.autoEmbed = false;
+    if (!comp.supportsQuickRead) filtered.autoQuickRead = false;
+    if (!comp.supportsSize) {
+      filtered.previewWidth = null;
+      filtered.previewHeight = null;
+    }
+    if (!comp.supportsDisableSecurity) filtered.disableSecurityCheck = false;
+    return filtered;
+  }
+
   function matchPreviewRule(url) {
     if (!settings.previewRules || settings.previewRules.length === 0 || !url) return null;
 
@@ -461,7 +531,8 @@
 
       for (const rule of sortedRules) {
         let matched = false;
-        const matchValue = rule.caseSensitive ? rule.matchValue : rule.matchValue.toLowerCase();
+        const rawMatchValue = rule.matchType === 'suffix' ? normalizeSuffix(rule.matchValue) : rule.matchValue;
+        const matchValue = rule.caseSensitive ? rawMatchValue : rawMatchValue.toLowerCase();
         const testHostname = rule.caseSensitive ? hostname : hostname.toLowerCase();
         const testPathname = rule.caseSensitive ? pathname : pathname.toLowerCase();
         const testUrl = rule.caseSensitive ? fullUrl : fullUrl.toLowerCase();
@@ -471,26 +542,23 @@
             matched = testHostname === matchValue || testHostname.endsWith('.' + matchValue);
             break;
           case 'suffix':
+            if (!matchValue || matchValue === '.') break;
+            if (/[\/?#&=]/.test(matchValue)) break;
             matched = testPathname.endsWith(matchValue) || testUrl.endsWith(matchValue);
             break;
           case 'keyword':
             matched = testUrl.includes(matchValue);
             break;
           case 'regex':
-            try {
-              const flags = rule.caseSensitive ? '' : 'i';
-              const regex = new RegExp(rule.matchValue, flags);
-              matched = regex.test(fullUrl);
-            } catch (e) {
-              matched = false;
-            }
+            const flags = rule.caseSensitive ? '' : 'i';
+            matched = safeRegexMatch(rule.matchValue, fullUrl, flags);
             break;
           default:
             matched = false;
         }
 
         if (matched) {
-          return rule;
+          return { ...rule, actions: filterCompatibleActions(rule) };
         }
       }
     } catch (e) {

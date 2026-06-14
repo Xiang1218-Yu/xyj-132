@@ -39,6 +39,37 @@ const DEFAULT_SETTINGS = {
   previewRules: []
 };
 
+const RULE_TYPE_COMPATIBILITY = {
+  webpage: { supportsEmbed: true, supportsQuickRead: true, supportsSize: true, supportsDisableSecurity: true },
+  image: { supportsEmbed: false, supportsQuickRead: false, supportsSize: true, supportsDisableSecurity: true },
+  video: { supportsEmbed: false, supportsQuickRead: false, supportsSize: true, supportsDisableSecurity: true },
+  'video-site': { supportsEmbed: true, supportsQuickRead: false, supportsSize: true, supportsDisableSecurity: true },
+  audio: { supportsEmbed: false, supportsQuickRead: false, supportsSize: true, supportsDisableSecurity: true },
+  'audio-site': { supportsEmbed: true, supportsQuickRead: false, supportsSize: true, supportsDisableSecurity: true }
+};
+
+function normalizeSuffix(raw) {
+  if (!raw) return '';
+  let s = String(raw).trim();
+  if (s && !s.startsWith('.')) s = '.' + s;
+  return s;
+}
+
+function validateRegexPattern(pattern) {
+  if (!pattern) return { valid: false, error: '正则表达式不能为空' };
+  if (pattern.length > 200) return { valid: false, error: '正则表达式长度不能超过 200 字符' };
+  const dangerous = /(\([^)]*[+*?]\)?[+*?])|(\([^)]*\|[^)]*\)[+*?])/;
+  if (dangerous.test(pattern)) return { valid: false, error: '正则包含可能导致 ReDoS 的嵌套量词模式' };
+  if ((pattern.match(/\(/g) || []).length > 10) return { valid: false, error: '正则表达式分组过多' };
+  if ((pattern.match(/\[.*?\]/g) || []).length > 10) return { valid: false, error: '正则表达式字符集过多' };
+  try {
+    new RegExp(pattern);
+    return { valid: true };
+  } catch (e) {
+    return { valid: false, error: '正则表达式语法错误: ' + e.message };
+  }
+}
+
 let allPreviewRules = [];
 let editingRuleId = null;
 
@@ -880,6 +911,16 @@ function init() {
   if (skipPreviewCheckbox) {
     skipPreviewCheckbox.addEventListener('change', updateNonSkipActionsVisibility);
   }
+
+  const forceTypeSelect = document.getElementById('actionForceType');
+  if (forceTypeSelect) {
+    forceTypeSelect.addEventListener('change', updateTypeCompatibilityUI);
+  }
+
+  const matchValueInput = document.getElementById('ruleMatchValue');
+  if (matchValueInput) {
+    matchValueInput.addEventListener('input', validateMatchValue);
+  }
 }
 
 function loadPreviewRules() {
@@ -1008,6 +1049,8 @@ function showRuleEditor(rule = null) {
 
   updateMatchTypeHint();
   updateNonSkipActionsVisibility();
+  validateMatchValue();
+  updateTypeCompatibilityUI();
 }
 
 function hideRuleEditor() {
@@ -1025,13 +1068,124 @@ function hideRuleEditor() {
 function updateMatchTypeHint() {
   const matchType = document.getElementById('ruleMatchType').value;
   const hintEl = document.getElementById('matchTypeHint');
+  const placeholderEl = document.getElementById('ruleMatchValue');
   const hints = {
     'domain': '域名匹配：完全匹配域名或其子域名（如 youtube.com 匹配 m.youtube.com）',
-    'suffix': '后缀匹配：匹配 URL 路径的后缀（如 .pdf、.jpg、.mp4 等）',
+    'suffix': '后缀匹配：匹配 URL 路径的后缀，无需前缀点号（如 pdf、jpg、mp4，保存时自动补全 .pdf）',
     'keyword': '关键词匹配：在完整 URL 中搜索关键词（如 /blog/、article 等）',
-    'regex': '正则表达式：使用正则表达式匹配完整 URL（注意转义特殊字符）'
+    'regex': '正则表达式：使用正则表达式匹配完整 URL（最长 200 字符，不支持嵌套量词以避免 ReDoS）'
+  };
+  const placeholders = {
+    'domain': '例如：youtube.com',
+    'suffix': '例如：pdf 或 .pdf',
+    'keyword': '例如：/article/',
+    'regex': '例如：^https://.*\\.blog\\.com/'
   };
   if (hintEl) hintEl.textContent = hints[matchType] || '';
+  if (placeholderEl) placeholderEl.placeholder = placeholders[matchType] || '';
+  validateMatchValue();
+}
+
+function validateMatchValue() {
+  const matchType = document.getElementById('ruleMatchType')?.value;
+  const matchValue = document.getElementById('ruleMatchValue')?.value?.trim();
+  const errorEl = document.getElementById('matchValueError');
+  if (!errorEl) return;
+
+  if (!matchValue) {
+    errorEl.style.display = 'none';
+    errorEl.textContent = '';
+    return;
+  }
+
+  if (matchType === 'suffix') {
+    const normalized = normalizeSuffix(matchValue);
+    if (/[\/?#&=]/.test(normalized)) {
+      errorEl.textContent = '后缀不能包含 / ? # & = 等 URL 特殊字符';
+      errorEl.style.display = '';
+      return;
+    }
+    if (normalized === '.') {
+      errorEl.textContent = '后缀不能为空或只有点号';
+      errorEl.style.display = '';
+      return;
+    }
+    errorEl.style.display = 'none';
+    errorEl.textContent = '';
+  } else if (matchType === 'regex') {
+    const r = validateRegexPattern(matchValue);
+    if (!r.valid) {
+      errorEl.textContent = r.error;
+      errorEl.style.display = '';
+      return;
+    }
+    errorEl.style.display = 'none';
+    errorEl.textContent = '';
+  } else if (matchType === 'domain') {
+    if (/[^a-zA-Z0-9.\-]/.test(matchValue)) {
+      errorEl.textContent = '域名只能包含字母、数字、点号和连字符';
+      errorEl.style.display = '';
+      return;
+    }
+    errorEl.style.display = 'none';
+    errorEl.textContent = '';
+  } else {
+    errorEl.style.display = 'none';
+    errorEl.textContent = '';
+  }
+}
+
+function updateTypeCompatibilityUI() {
+  const forceType = document.getElementById('actionForceType')?.value;
+  const compatEl = document.getElementById('forceTypeCompatibility');
+  const embedToggle = document.getElementById('actionAutoEmbed');
+  const quickReadToggle = document.getElementById('actionAutoQuickRead');
+  const widthInput = document.getElementById('actionWidth');
+  const heightInput = document.getElementById('actionHeight');
+  const secToggle = document.getElementById('actionDisableSecurity');
+
+  if (!forceType || !RULE_TYPE_COMPATIBILITY[forceType]) {
+    if (compatEl) {
+      compatEl.textContent = '自动检测：按链接类型启用全部行为';
+      compatEl.style.color = '';
+    }
+    [embedToggle, quickReadToggle, widthInput, heightInput, secToggle].forEach(el => {
+      if (el) el.style.opacity = '';
+    });
+    return;
+  }
+
+  const comp = RULE_TYPE_COMPATIBILITY[forceType];
+  const labels = {
+    webpage: '网页',
+    image: '图片',
+    video: '视频文件',
+    'video-site': '视频网站',
+    audio: '音频文件',
+    'audio-site': '音频网站'
+  };
+
+  const unsupported = [];
+  if (!comp.supportsEmbed) unsupported.push('嵌入模式');
+  if (!comp.supportsQuickRead) unsupported.push('速读模式');
+  if (!comp.supportsSize) unsupported.push('自定义尺寸');
+  if (!comp.supportsDisableSecurity) unsupported.push('禁用安全评估');
+
+  if (compatEl) {
+    if (unsupported.length === 0) {
+      compatEl.textContent = labels[forceType] + '：支持全部行为选项';
+      compatEl.style.color = '';
+    } else {
+      compatEl.textContent = labels[forceType] + '：不支持 ' + unsupported.join('、') + '（会自动忽略）';
+      compatEl.style.color = '#f59e0b';
+    }
+  }
+
+  if (embedToggle) embedToggle.style.opacity = comp.supportsEmbed ? '' : '0.4';
+  if (quickReadToggle) quickReadToggle.style.opacity = comp.supportsQuickRead ? '' : '0.4';
+  if (widthInput) widthInput.style.opacity = comp.supportsSize ? '' : '0.4';
+  if (heightInput) heightInput.style.opacity = comp.supportsSize ? '' : '0.4';
+  if (secToggle) secToggle.style.opacity = comp.supportsDisableSecurity ? '' : '0.4';
 }
 
 function updateNonSkipActionsVisibility() {
@@ -1045,35 +1199,75 @@ function updateNonSkipActionsVisibility() {
 
 function saveCurrentRule() {
   const name = document.getElementById('ruleName').value.trim();
-  const matchValue = document.getElementById('ruleMatchValue').value.trim();
+  const rawMatchValue = document.getElementById('ruleMatchValue').value.trim();
+  const matchType = document.getElementById('ruleMatchType').value;
 
   if (!name) {
     showToast('请输入规则名称');
     return;
   }
-  if (!matchValue) {
+  if (!rawMatchValue) {
     showToast('请输入匹配值');
     return;
   }
 
+  let matchValue = rawMatchValue;
+  if (matchType === 'suffix') {
+    matchValue = normalizeSuffix(rawMatchValue);
+    if (/[\/?#&=]/.test(matchValue) || matchValue === '.') {
+      showToast('后缀格式不正确');
+      return;
+    }
+  }
+  if (matchType === 'regex') {
+    const r = validateRegexPattern(rawMatchValue);
+    if (!r.valid) {
+      showToast(r.error);
+      return;
+    }
+  }
+  if (matchType === 'domain') {
+    if (/[^a-zA-Z0-9.\-]/.test(rawMatchValue)) {
+      showToast('域名格式不正确');
+      return;
+    }
+  }
+
+  const forceType = document.getElementById('actionForceType').value || null;
   const widthVal = document.getElementById('actionWidth').value;
   const heightVal = document.getElementById('actionHeight').value;
+  let autoEmbed = document.getElementById('actionAutoEmbed').checked;
+  let autoQuickRead = document.getElementById('actionAutoQuickRead').checked;
+  let previewWidth = widthVal ? parseInt(widthVal, 10) : null;
+  let previewHeight = heightVal ? parseInt(heightVal, 10) : null;
+  let disableSecurityCheck = document.getElementById('actionDisableSecurity').checked;
+
+  if (forceType && RULE_TYPE_COMPATIBILITY[forceType]) {
+    const comp = RULE_TYPE_COMPATIBILITY[forceType];
+    if (!comp.supportsEmbed) autoEmbed = false;
+    if (!comp.supportsQuickRead) autoQuickRead = false;
+    if (!comp.supportsSize) {
+      previewWidth = null;
+      previewHeight = null;
+    }
+    if (!comp.supportsDisableSecurity) disableSecurityCheck = false;
+  }
 
   const ruleData = {
     name: name,
     enabled: document.getElementById('ruleEnabled').checked,
     priority: parseInt(document.getElementById('rulePriority').value, 10) || 50,
-    matchType: document.getElementById('ruleMatchType').value,
+    matchType: matchType,
     matchValue: matchValue,
     caseSensitive: document.getElementById('ruleCaseSensitive').checked,
     actions: {
       skipPreview: document.getElementById('actionSkipPreview').checked,
-      forceType: document.getElementById('actionForceType').value || null,
-      previewWidth: widthVal ? parseInt(widthVal, 10) : null,
-      previewHeight: heightVal ? parseInt(heightVal, 10) : null,
-      disableSecurityCheck: document.getElementById('actionDisableSecurity').checked,
-      autoEmbed: document.getElementById('actionAutoEmbed').checked,
-      autoQuickRead: document.getElementById('actionAutoQuickRead').checked
+      forceType: forceType,
+      previewWidth: previewWidth,
+      previewHeight: previewHeight,
+      disableSecurityCheck: disableSecurityCheck,
+      autoEmbed: autoEmbed,
+      autoQuickRead: autoQuickRead
     }
   };
 
