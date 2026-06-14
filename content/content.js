@@ -54,11 +54,16 @@
   ];
 
   const PHISHING_KEYWORDS = [
-    'login', 'signin', 'verify', 'account', 'secure', 'confirm', 'update',
-    'wallet', 'crypto', 'bitcoin', 'ethereum', 'prize', 'winner', 'free',
-    'urgent', 'immediate', 'suspended', 'limited', 'exclusive', 'claim',
-    'password', 'creditcard', 'banking', 'paypal', 'appleid', 'googleid',
-    'microsoft', 'amazon', 'facebook', 'instagram', 'twitter'
+    'verify', 'confirm', 'update', 'wallet', 'crypto', 'bitcoin', 'ethereum',
+    'prize', 'winner', 'free', 'urgent', 'immediate', 'suspended', 'limited',
+    'exclusive', 'claim', 'password', 'creditcard', 'banking'
+  ];
+
+  const LOGIN_PATH_KEYWORDS = ['login', 'signin', 'account', 'secure'];
+
+  const BRAND_KEYWORDS = [
+    'paypal', 'appleid', 'googleid', 'microsoft', 'amazon',
+    'facebook', 'instagram', 'twitter'
   ];
 
   const MALICIOUS_TLDS = [
@@ -90,99 +95,140 @@
 
     const risks = [];
     let score = 100;
+    const deducted = new Set();
 
     try {
       const urlObj = new URL(url);
       const hostname = urlObj.hostname.toLowerCase();
       const pathname = urlObj.pathname.toLowerCase();
       const search = urlObj.search.toLowerCase();
-      const fullUrl = url.toLowerCase();
 
       if (settings.securityRules.checkPhishing) {
         for (const keyword of PHISHING_KEYWORDS) {
-          if (fullUrl.includes(keyword) && !isTrustedDomain(hostname)) {
+          const key = 'phishing-kw-' + keyword;
+          if (deducted.has(key)) continue;
+          if (pathname.includes(keyword) && !isTrustedDomain(hostname)) {
             risks.push({
               type: 'phishing',
               severity: 'high',
-              message: `包含可疑关键词: ${keyword}`
+              message: `路径包含可疑关键词: ${keyword}`
             });
-            score -= 20;
+            score -= 15;
+            deducted.add(key);
           }
         }
 
-        if (/login|signin|account|secure|verify/i.test(pathname) && !isTrustedDomain(hostname)) {
-          risks.push({
-            type: 'phishing',
-            severity: 'high',
-            message: '疑似登录页面，请核实网站真伪'
-          });
-          score -= 25;
-        }
-      }
-
-      if (settings.securityRules.checkMalicious) {
-        for (const tld of MALICIOUS_TLDS) {
-          if (hostname.endsWith(tld)) {
+        for (const keyword of LOGIN_PATH_KEYWORDS) {
+          const key = 'phishing-login-' + keyword;
+          if (deducted.has(key)) continue;
+          if (pathname.includes(keyword) && !isTrustedDomain(hostname)) {
             risks.push({
-              type: 'malicious',
-              severity: 'medium',
-              message: `使用可疑顶级域名: ${tld}`
+              type: 'phishing',
+              severity: 'high',
+              message: `疑似登录页面 (${keyword})，请核实网站真伪`
             });
-            score -= 15;
+            score -= 20;
+            deducted.add(key);
             break;
           }
         }
 
-        if (hostname.startsWith('www.') && hostname.length > 50) {
+        for (const brand of BRAND_KEYWORDS) {
+          const key = 'phishing-brand-' + brand;
+          if (deducted.has(key)) continue;
+          const parts = hostname.replace(/^www\./, '').split('.');
+          if (parts[0].includes(brand) && !isTrustedDomain(hostname)) {
+            risks.push({
+              type: 'phishing',
+              severity: 'high',
+              message: `疑似仿冒品牌: ${brand}`
+            });
+            score -= 25;
+            deducted.add(key);
+            break;
+          }
+        }
+      }
+
+      if (settings.securityRules.checkMalicious) {
+        const tldKey = 'malicious-tld';
+        if (!deducted.has(tldKey)) {
+          for (const tld of MALICIOUS_TLDS) {
+            if (hostname.endsWith(tld)) {
+              risks.push({
+                type: 'malicious',
+                severity: 'medium',
+                message: `使用可疑顶级域名: ${tld}`
+              });
+              score -= 15;
+              deducted.add(tldKey);
+              break;
+            }
+          }
+        }
+
+        const longDomainKey = 'malicious-longdomain';
+        if (!deducted.has(longDomainKey) && hostname.startsWith('www.') && hostname.length > 50) {
           risks.push({
             type: 'malicious',
             severity: 'medium',
             message: '域名过长，可能是伪装的恶意网站'
           });
           score -= 10;
+          deducted.add(longDomainKey);
         }
       }
 
       if (settings.securityRules.checkSuspicious) {
-        for (const pattern of SUSPICIOUS_PATTERNS) {
-          if (pattern.test(url)) {
-            risks.push({
-              type: 'suspicious',
-              severity: 'low',
-              message: 'URL 包含可疑模式'
-            });
-            score -= 5;
-            break;
+        const suspiciousKey = 'suspicious-pattern';
+        if (!deducted.has(suspiciousKey)) {
+          for (const pattern of SUSPICIOUS_PATTERNS) {
+            if (pattern.test(url)) {
+              risks.push({
+                type: 'suspicious',
+                severity: 'low',
+                message: 'URL 包含可疑模式'
+              });
+              score -= 5;
+              deducted.add(suspiciousKey);
+              break;
+            }
           }
         }
 
-        if (urlObj.protocol === 'http:') {
+        const httpKey = 'suspicious-http';
+        if (!deducted.has(httpKey) && urlObj.protocol === 'http:') {
           risks.push({
             type: 'suspicious',
             severity: 'low',
             message: '非 HTTPS 连接，数据传输不安全'
           });
           score -= 10;
+          deducted.add(httpKey);
         }
 
-        if (search.length > 200) {
+        const longQueryKey = 'suspicious-longquery';
+        if (!deducted.has(longQueryKey) && search.length > 200) {
           risks.push({
             type: 'suspicious',
             severity: 'low',
             message: 'URL 参数过长'
           });
           score -= 5;
+          deducted.add(longQueryKey);
         }
       }
 
       if (settings.securityRules.checkRedirect) {
-        if (/redirect|url=|link=|href=|go=/i.test(search)) {
+        const redirectKey = 'redirect-param';
+        if (!deducted.has(redirectKey) && /redirect|url=|link=|href=|go=/i.test(search)) {
           risks.push({
             type: 'redirect',
             severity: 'medium',
             message: '包含跳转参数，可能跳转到外部网站'
           });
           score -= 15;
+          deducted.add(redirectKey);
         }
       }
 
@@ -1573,7 +1619,14 @@
     if (settings.triggerMode !== 'click') return;
     if (isInBlacklist(window.location.href)) return;
 
-    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) {
+    const batchHotkey = settings.batchMode.hotkey;
+    const modifierPressed =
+      (batchHotkey !== 'Alt' && event.altKey) ||
+      (batchHotkey !== 'Control' && (event.ctrlKey || event.metaKey)) ||
+      (batchHotkey !== 'Shift' && event.shiftKey) ||
+      event.button !== 0;
+
+    if (modifierPressed) {
       return;
     }
 
@@ -1602,13 +1655,15 @@
     if (!settings.batchMode.enabled) return;
     
     const hotkey = settings.batchMode.hotkey;
-    const isHotkeyPressed = 
-      (hotkey === 'Shift' && event.shiftKey) ||
-      (hotkey === 'Ctrl' && (event.ctrlKey || event.metaKey)) ||
-      (hotkey === 'Alt' && event.altKey) ||
-      (hotkey === 'Space' && event.code === 'Space');
-    
+    const isHotkeyPressed =
+      (hotkey === 'Shift' && event.key === 'Shift') ||
+      (hotkey === 'Control' && (event.key === 'Control' || event.key === 'Meta')) ||
+      (hotkey === 'Alt' && event.key === 'Alt');
+
     if (isHotkeyPressed && !isBatchModeActive && !event.repeat) {
+      if (settings.triggerMode === 'click' && hotkey === 'Alt' && event.altKey) {
+        return;
+      }
       startBatchMode();
     }
   }
@@ -1616,14 +1671,20 @@
   function handleKeyUp(event) {
     if (!settings.batchMode.enabled) return;
     
+    if (!isBatchModeActive) return;
+
     const hotkey = settings.batchMode.hotkey;
-    const isHotkeyReleased = 
-      (hotkey === 'Shift' && !event.shiftKey) ||
-      (hotkey === 'Ctrl' && !event.ctrlKey && !event.metaKey) ||
-      (hotkey === 'Alt' && !event.altKey) ||
-      (hotkey === 'Space' && event.code === 'Space');
-    
-    if (isHotkeyReleased && isBatchModeActive) {
+    let shouldEnd = false;
+
+    if (hotkey === 'Shift') {
+      shouldEnd = !event.shiftKey;
+    } else if (hotkey === 'Control') {
+      shouldEnd = !event.ctrlKey && !event.metaKey;
+    } else if (hotkey === 'Alt') {
+      shouldEnd = !event.altKey;
+    }
+
+    if (shouldEnd) {
       endBatchMode();
     }
   }
