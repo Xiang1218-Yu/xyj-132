@@ -22,6 +22,182 @@ function setToCache(url, data) {
   });
 }
 
+function extractReadableContent(html, url) {
+  let content = html;
+
+  content = content.replace(/<script[\s\S]*?<\/script>/gi, '');
+  content = content.replace(/<style[\s\S]*?<\/style>/gi, '');
+  content = content.replace(/<noscript[\s\S]*?<\/noscript>/gi, '');
+  content = content.replace(/<!--[\s\S]*?-->/g, '');
+
+  content = content.replace(/<header[\s\S]*?<\/header>/gi, '');
+  content = content.replace(/<nav[\s\S]*?<\/nav>/gi, '');
+  content = content.replace(/<footer[\s\S]*?<\/footer>/gi, '');
+  content = content.replace(/<aside[\s\S]*?<\/aside>/gi, '');
+  content = content.replace(/<form[\s\S]*?<\/form>/gi, '');
+
+  const bodyMatch = content.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (bodyMatch) {
+    content = bodyMatch[1];
+  }
+
+  const paragraphs = [];
+  const pRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
+  let match;
+  while ((match = pRegex.exec(content)) !== null) {
+    const text = match[1].replace(/<[^>]+>/g, '').trim();
+    if (text.length > 20) {
+      paragraphs.push(text);
+    }
+  }
+
+  let mainText = paragraphs.join('\n\n');
+
+  if (mainText.length < 200) {
+    const textContent = content.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    mainText = textContent;
+  }
+
+  return {
+    text: mainText,
+    paragraphs: paragraphs
+  };
+}
+
+function extractHeadings(html) {
+  const headings = [];
+  const headingRegex = /<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi;
+  let match;
+
+  while ((match = headingRegex.exec(html)) !== null) {
+    const level = parseInt(match[1], 10);
+    const text = match[2].replace(/<[^>]+>/g, '').trim();
+    if (text && text.length > 0 && text.length < 200) {
+      headings.push({
+        level: level,
+        text: text
+      });
+    }
+  }
+
+  return headings.slice(0, 20);
+}
+
+function extractKeywords(text, topN = 10) {
+  if (!text || text.length < 50) return [];
+
+  const stopWords = new Set([
+    '的', '了', '是', '我', '有', '和', '就', '不', '人', '都', '一', '一个',
+    '上', '也', '很', '到', '说', '要', '去', '你', '会', '着', '没有', '看',
+    '好', '自己', '这', '那', '他', '她', '它', '们', '这个', '那个', '什么',
+    '怎么', '为什么', '因为', '所以', '但是', '然后', '还是', '或者', '可以',
+    '可能', '应该', '如果', '那么', '这些', '那些', '这样', '那样', '之',
+    '而', '与', '及', '等', '在', '为', '以', '于', '上', '中', '下', '时',
+    '地', '得', '做', '对', '将', '把', '被', '让', '给', '从', '向', '由',
+    'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+    'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+    'should', 'may', 'might', 'must', 'shall', 'can', 'need', 'dare',
+    'ought', 'used', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by',
+    'from', 'as', 'into', 'through', 'during', 'before', 'after', 'above',
+    'below', 'between', 'out', 'off', 'over', 'under', 'again', 'further',
+    'then', 'once', 'and', 'but', 'if', 'or', 'because', 'until', 'while',
+    'and', 'but', 'so', 'than', 'too', 'very', 's', 't', 'just', 'now',
+    'this', 'that', 'these', 'those', 'i', 'me', 'my', 'myself', 'we',
+    'our', 'ours', 'ourselves', 'you', 'your', 'yours', 'yourself',
+    'yourselves', 'he', 'him', 'his', 'himself', 'she', 'her', 'hers',
+    'herself', 'it', 'its', 'itself', 'they', 'them', 'their', 'theirs',
+    'themselves', 'what', 'which', 'who', 'whom', 'whose', 'where', 'when',
+    'why', 'how', 'all', 'both', 'each', 'few', 'more', 'most', 'other',
+    'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'than',
+    'also', 'here', 'there', 'up', 'down', 'about'
+  ]);
+
+  const wordFreq = new Map();
+
+  const chineseChars = text.match(/[\u4e00-\u9fa5]{2,}/g);
+  if (chineseChars) {
+    for (const str of chineseChars) {
+      for (let len = 2; len <= Math.min(4, str.length); len++) {
+        for (let i = 0; i <= str.length - len; i++) {
+          const word = str.substring(i, i + len);
+          if (!stopWords.has(word)) {
+            wordFreq.set(word, (wordFreq.get(word) || 0) + 1);
+          }
+        }
+      }
+    }
+  }
+
+  const englishWords = text.match(/[a-zA-Z]{3,}/g);
+  if (englishWords) {
+    for (const word of englishWords) {
+      const lowerWord = word.toLowerCase();
+      if (!stopWords.has(lowerWord) && lowerWord.length >= 3) {
+        wordFreq.set(lowerWord, (wordFreq.get(lowerWord) || 0) + 1);
+      }
+    }
+  }
+
+  const sorted = Array.from(wordFreq.entries())
+    .sort((a, b) => {
+      if (b[1] !== a[1]) return b[1] - a[1];
+      return b[0].length - a[0].length;
+    })
+    .slice(0, topN)
+    .map(item => item[0]);
+
+  return sorted;
+}
+
+function calculateReadingTime(text) {
+  if (!text) return { minutes: 0, words: 0 };
+
+  const chineseChars = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
+  const englishWords = (text.match(/[a-zA-Z]+/g) || []).length;
+
+  const chineseCpm = 500;
+  const englishWpm = 200;
+
+  const minutes = Math.max(1, Math.ceil(
+    (chineseChars / chineseCpm) + (englishWords / englishWpm)
+  ));
+
+  const totalWords = chineseChars + englishWords;
+
+  return {
+    minutes: minutes,
+    words: totalWords,
+    chineseChars: chineseChars,
+    englishWords: englishWords
+  };
+}
+
+function generateSummary(text, maxLength = 200) {
+  if (!text || text.length === 0) return '';
+
+  const cleaned = text.replace(/\s+/g, ' ').trim();
+  if (cleaned.length <= maxLength) return cleaned;
+
+  const sentences = cleaned.split(/[。！？.!?]+/).filter(s => s.trim().length > 0);
+
+  if (sentences.length > 0) {
+    let summary = '';
+    for (const sentence of sentences) {
+      const trimmed = sentence.trim();
+      if (summary.length + trimmed.length <= maxLength) {
+        summary += (summary ? '' : '') + trimmed + '。';
+      } else {
+        break;
+      }
+    }
+    if (summary.length > 0) {
+      return summary.slice(0, maxLength) + '...';
+    }
+  }
+
+  return cleaned.slice(0, maxLength) + '...';
+}
+
 function extractMetaTags(html, url) {
   const result = {
     title: '',
@@ -30,7 +206,12 @@ function extractMetaTags(html, url) {
     favicon: '',
     siteName: '',
     video: '',
-    type: ''
+    type: '',
+    summary: '',
+    headings: [],
+    keywords: [],
+    readingTime: null,
+    contentText: ''
   };
 
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
@@ -140,6 +321,21 @@ function extractMetaTags(html, url) {
     } catch (e) {
       result.siteName = '';
     }
+  }
+
+  const readableContent = extractReadableContent(html, url);
+  result.contentText = readableContent.text;
+
+  if (readableContent.text && readableContent.text.length > 50) {
+    result.summary = generateSummary(readableContent.text, 250);
+    result.keywords = extractKeywords(readableContent.text, 8);
+    result.readingTime = calculateReadingTime(readableContent.text);
+  }
+
+  result.headings = extractHeadings(html);
+
+  if (!result.description && result.summary) {
+    result.description = result.summary;
   }
 
   return result;

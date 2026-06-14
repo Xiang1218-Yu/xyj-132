@@ -465,6 +465,44 @@
 
     const urlObj = new URL(url);
     const canEmbed = canEmbedUrl(url);
+    const hasSummary = data.summary && data.summary.length > 0;
+    const hasKeywords = data.keywords && data.keywords.length > 0;
+    const hasHeadings = data.headings && data.headings.length > 0;
+    const hasReadingTime = data.readingTime && data.readingTime.minutes > 0;
+    const hasQuickRead = hasSummary || hasKeywords || hasHeadings || hasReadingTime;
+
+    let keywordsHtml = '';
+    if (hasKeywords) {
+      keywordsHtml = data.keywords.map(kw => 
+        `<span class="qlp-keyword-tag">${escapeHtml(kw)}</span>`
+      ).join('');
+    }
+
+    let headingsHtml = '';
+    if (hasHeadings) {
+      headingsHtml = data.headings.map(h => {
+        const indent = (h.level - 1) * 12;
+        return `
+          <div class="qlp-heading-item" style="padding-left: ${indent}px;">
+            <span class="qlp-heading-level">H${h.level}</span>
+            <span class="qlp-heading-text">${escapeHtml(h.text)}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    let readingTimeHtml = '';
+    if (hasReadingTime) {
+      readingTimeHtml = `
+        <div class="qlp-reading-time">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+          </svg>
+          <span class="qlp-reading-minutes">${data.readingTime.minutes} 分钟阅读</span>
+          <span class="qlp-reading-words">约 ${data.readingTime.words} 字</span>
+        </div>
+      `;
+    }
 
     container.innerHTML = `
       <div class="qlp-webpage-preview">
@@ -473,17 +511,25 @@
           <div class="qlp-webpage-header">
             ${icon ? `<img src="${safeIcon}" class="qlp-favicon" alt="" onerror="this.style.display='none'" />` : ''}
             <span class="qlp-site-name">${siteName}</span>
-            ${canEmbed ? `<button class="qlp-embed-toggle" data-url="${safeUrl}" title="切换网页预览模式">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-                <path d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1zm7 0h-1.5v-.5h-2v3h2V13H18v1c0 .55-.45 1-1 1h-3c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1z"/>
-              </svg>
-              网页预览
-            </button>` : `<span class="qlp-no-embed-hint" title="该网站禁止嵌入预览">
-              <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
-              </svg>
-              无法嵌入
-            </span>`}
+            <div class="qlp-header-actions">
+              ${hasQuickRead ? `<button class="qlp-quickread-toggle" title="速读摘要">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                  <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                </svg>
+                速读
+              </button>` : ''}
+              ${canEmbed ? `<button class="qlp-embed-toggle" data-url="${safeUrl}" title="切换网页预览模式">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                  <path d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1zm7 0h-1.5v-.5h-2v3h2V13H18v1c0 .55-.45 1-1 1h-3c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1z"/>
+                </svg>
+                网页预览
+              </button>` : `<span class="qlp-no-embed-hint" title="该网站禁止嵌入预览">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                </svg>
+                无法嵌入
+              </span>`}
+            </div>
           </div>
           <div class="qlp-webpage-title">${title}</div>
           ${description ? `<div class="qlp-webpage-description">${description}</div>` : ''}
@@ -495,6 +541,38 @@
               该网站设置了安全策略，无法在弹窗中预览，请点击右上角在新标签页打开
             </div>` : ''}
         </div>
+        ${hasQuickRead ? `<div class="qlp-quickread-panel" style="display: none;">
+          <div class="qlp-quickread-header">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+            </svg>
+            <span class="qlp-quickread-title">速读摘要</span>
+            <button class="qlp-quickread-close" title="关闭速读摘要">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+              </svg>
+            </button>
+          </div>
+          ${readingTimeHtml}
+          ${hasSummary ? `
+          <div class="qlp-quickread-section">
+            <div class="qlp-quickread-section-title">内容摘要</div>
+            <div class="qlp-quickread-summary">${escapeHtml(data.summary)}</div>
+          </div>
+          ` : ''}
+          ${hasKeywords ? `
+          <div class="qlp-quickread-section">
+            <div class="qlp-quickread-section-title">关键词</div>
+            <div class="qlp-keywords">${keywordsHtml}</div>
+          </div>
+          ` : ''}
+          ${hasHeadings ? `
+          <div class="qlp-quickread-section">
+            <div class="qlp-quickread-section-title">文章结构</div>
+            <div class="qlp-headings">${headingsHtml}</div>
+          </div>
+          ` : ''}
+        </div>` : ''}
         <div class="qlp-embed-container" style="display: none;">
           <div class="qlp-embed-header">
             <span class="qlp-embed-url">${safeUrl}</span>
@@ -537,6 +615,9 @@
     const embedError = container.querySelector('.qlp-embed-error');
     const backBtn = container.querySelector('.qlp-embed-back');
     const refreshBtn = container.querySelector('.qlp-embed-refresh');
+    const quickreadToggle = container.querySelector('.qlp-quickread-toggle');
+    const quickreadPanel = container.querySelector('.qlp-quickread-panel');
+    const quickreadClose = container.querySelector('.qlp-quickread-close');
 
     function showEmbedError() {
       if (embedLoading) embedLoading.style.display = 'none';
@@ -630,6 +711,10 @@
           embedContainer.style.display = 'block';
           if (infoDiv) infoDiv.style.display = 'none';
           if (mediaContainer) mediaContainer.style.display = 'none';
+          if (quickreadPanel && quickreadPanel.style.display !== 'none') {
+            quickreadPanel.style.display = 'none';
+            if (quickreadToggle) quickreadToggle.classList.remove('qlp-quickread-active');
+          }
           if (iframe) {
             const src = iframe.getAttribute('data-src');
             if (embedLoading) embedLoading.style.display = 'flex';
@@ -645,6 +730,40 @@
             }, 8000);
           }
         }
+      });
+    }
+
+    if (quickreadToggle && quickreadPanel) {
+      quickreadToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isActive = quickreadToggle.classList.contains('qlp-quickread-active');
+
+        if (isActive) {
+          quickreadToggle.classList.remove('qlp-quickread-active');
+          quickreadPanel.style.display = 'none';
+          if (infoDiv) infoDiv.style.display = '';
+          if (mediaContainer) mediaContainer.style.display = '';
+        } else {
+          quickreadToggle.classList.add('qlp-quickread-active');
+          quickreadPanel.style.display = 'block';
+          if (infoDiv) infoDiv.style.display = 'none';
+          if (mediaContainer) mediaContainer.style.display = 'none';
+          if (toggleBtn && toggleBtn.classList.contains('qlp-embed-active')) {
+            toggleBtn.classList.remove('qlp-embed-active');
+            embedContainer.style.display = 'none';
+            if (iframe) iframe.src = 'about:blank';
+          }
+        }
+      });
+    }
+
+    if (quickreadClose && quickreadPanel && quickreadToggle) {
+      quickreadClose.addEventListener('click', (e) => {
+        e.stopPropagation();
+        quickreadPanel.style.display = 'none';
+        quickreadToggle.classList.remove('qlp-quickread-active');
+        if (infoDiv) infoDiv.style.display = '';
+        if (mediaContainer) mediaContainer.style.display = '';
       });
     }
   }
