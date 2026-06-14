@@ -161,6 +161,42 @@
           </select>
         </div>
 
+        <div class="section" id="fixed-position-section" style="display:none; margin-top: 12px; padding: 0; background: transparent;">
+          <p class="section-desc" style="margin-bottom: 8px;">选择固定位置</p>
+          <div class="fixed-corner-grid" id="fixedCornerGrid">
+            <button class="fixed-corner-btn" data-corner="top-left" title="左上角">↖</button>
+            <button class="fixed-corner-btn" data-corner="top-right" title="右上角">↗</button>
+            <button class="fixed-corner-btn" data-corner="bottom-left" title="左下角">↙</button>
+            <button class="fixed-corner-btn" data-corner="bottom-right" title="右下角">↘</button>
+            <button class="fixed-corner-btn" data-corner="top-center" title="顶部居中">⬆</button>
+            <button class="fixed-corner-btn" data-corner="center" title="屏幕中央">●</button>
+          </div>
+          <div class="size-inputs" style="margin-top: 12px;">
+            <div class="size-input">
+              <label for="positioning_fixedLeft">左边距 (留空用右边距)</label>
+              <input type="number" id="positioning_fixedLeft" min="0" max="2000" placeholder="px">
+              <span class="unit">px</span>
+            </div>
+            <div class="size-input">
+              <label for="positioning_fixedRight">右边距</label>
+              <input type="number" id="positioning_fixedRight" min="0" max="2000" placeholder="px">
+              <span class="unit">px</span>
+            </div>
+          </div>
+          <div class="size-inputs" style="margin-top: 8px;">
+            <div class="size-input">
+              <label for="positioning_fixedTop">上边距 (留空用下边距)</label>
+              <input type="number" id="positioning_fixedTop" min="0" max="2000" placeholder="px">
+              <span class="unit">px</span>
+            </div>
+            <div class="size-input">
+              <label for="positioning_fixedBottom">下边距</label>
+              <input type="number" id="positioning_fixedBottom" min="0" max="2000" placeholder="px">
+              <span class="unit">px</span>
+            </div>
+          </div>
+        </div>
+
         <div class="size-inputs" style="margin-top: 12px;">
           <div class="size-input">
             <label for="positioning_offsetX">水平偏移</label>

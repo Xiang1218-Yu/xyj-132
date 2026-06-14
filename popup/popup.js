@@ -394,14 +394,91 @@ function loadPositioningSettings(positioning) {
   document.getElementById('positioning_smoothTransition').checked = positioning.smoothTransition;
   document.getElementById('positioning_smartAnchor').checked = positioning.smartAnchor;
 
-  updateAnchorSection(positioning.mode);
+  const fixed = positioning.fixedPosition || {};
+  document.getElementById('positioning_fixedLeft').value = fixed.left !== null && fixed.left !== undefined ? fixed.left : '';
+  document.getElementById('positioning_fixedRight').value = fixed.right !== null && fixed.right !== undefined ? fixed.right : '';
+  document.getElementById('positioning_fixedTop').value = fixed.top !== null && fixed.top !== undefined ? fixed.top : '';
+  document.getElementById('positioning_fixedBottom').value = fixed.bottom !== null && fixed.bottom !== undefined ? fixed.bottom : '';
+
+  updateFixedCornerSelection(fixed);
+  updatePositioningSections(positioning.mode);
 }
 
-function updateAnchorSection(mode) {
+function updatePositioningSections(mode) {
   const anchorSection = document.getElementById('anchor-position-section');
   if (anchorSection) {
     anchorSection.style.display = mode === 'anchor' ? 'block' : 'none';
   }
+  const fixedSection = document.getElementById('fixed-position-section');
+  if (fixedSection) {
+    fixedSection.style.display = mode === 'fixed' ? 'block' : 'none';
+  }
+}
+
+function applyFixedCorner(corner) {
+  const leftInput = document.getElementById('positioning_fixedLeft');
+  const rightInput = document.getElementById('positioning_fixedRight');
+  const topInput = document.getElementById('positioning_fixedTop');
+  const bottomInput = document.getElementById('positioning_fixedBottom');
+  const margin = 20;
+
+  leftInput.value = '';
+  rightInput.value = '';
+  topInput.value = '';
+  bottomInput.value = '';
+
+  switch (corner) {
+    case 'top-left':
+      topInput.value = margin;
+      leftInput.value = margin;
+      break;
+    case 'top-right':
+      topInput.value = margin;
+      rightInput.value = margin;
+      break;
+    case 'bottom-left':
+      bottomInput.value = margin;
+      leftInput.value = margin;
+      break;
+    case 'bottom-right':
+      bottomInput.value = margin;
+      rightInput.value = margin;
+      break;
+    case 'top-center':
+      topInput.value = margin;
+      break;
+    case 'center':
+      break;
+  }
+
+  updateFixedCornerSelection({
+    left: leftInput.value === '' ? null : parseInt(leftInput.value, 10),
+    right: rightInput.value === '' ? null : parseInt(rightInput.value, 10),
+    top: topInput.value === '' ? null : parseInt(topInput.value, 10),
+    bottom: bottomInput.value === '' ? null : parseInt(bottomInput.value, 10)
+  });
+}
+
+function detectFixedCorner(fixed) {
+  const hasLeft = fixed.left !== null && fixed.left !== undefined;
+  const hasRight = fixed.right !== null && fixed.right !== undefined;
+  const hasTop = fixed.top !== null && fixed.top !== undefined;
+  const hasBottom = fixed.bottom !== null && fixed.bottom !== undefined;
+
+  if (!hasLeft && !hasRight && !hasTop && !hasBottom) return 'center';
+  if (hasLeft && hasTop) return 'top-left';
+  if (hasRight && hasTop) return 'top-right';
+  if (hasLeft && hasBottom) return 'bottom-left';
+  if (hasRight && hasBottom) return 'bottom-right';
+  if (hasTop) return 'top-center';
+  return null;
+}
+
+function updateFixedCornerSelection(fixed) {
+  const activeCorner = detectFixedCorner(fixed);
+  document.querySelectorAll('.fixed-corner-btn').forEach(btn => {
+    btn.classList.toggle('qlp-active', btn.dataset.corner === activeCorner);
+  });
 }
 
 function loadBatchSettings(batchMode) {
@@ -450,6 +527,12 @@ function loadSecuritySettings(result) {
   document.getElementById('securityRules_checkRedirect').checked = result.securityRules.checkRedirect;
 }
 
+function parseNumOrNull(val) {
+  if (val === '' || val === null || val === undefined) return null;
+  const n = parseInt(val, 10);
+  return isNaN(n) ? null : n;
+}
+
 function saveSettings() {
   chrome.storage.sync.get(DEFAULT_SETTINGS, (result) => {
     const triggerMode = document.querySelector('input[name="triggerMode"]:checked').value;
@@ -473,7 +556,13 @@ function saveSettings() {
       mouseFollowSensitivity: parseFloat(document.getElementById('positioning_mouseFollowSensitivity').value),
       showAnchorIndicator: document.getElementById('positioning_showAnchorIndicator').checked,
       smoothTransition: document.getElementById('positioning_smoothTransition').checked,
-      smartAnchor: document.getElementById('positioning_smartAnchor').checked
+      smartAnchor: document.getElementById('positioning_smartAnchor').checked,
+      fixedPosition: {
+        top: parseNumOrNull(document.getElementById('positioning_fixedTop').value),
+        right: parseNumOrNull(document.getElementById('positioning_fixedRight').value),
+        bottom: parseNumOrNull(document.getElementById('positioning_fixedBottom').value),
+        left: parseNumOrNull(document.getElementById('positioning_fixedLeft').value)
+      }
     };
 
     const newSettings = {
@@ -508,7 +597,13 @@ function savePositioningSettings() {
       mouseFollowSensitivity: parseFloat(document.getElementById('positioning_mouseFollowSensitivity').value),
       showAnchorIndicator: document.getElementById('positioning_showAnchorIndicator').checked,
       smoothTransition: document.getElementById('positioning_smoothTransition').checked,
-      smartAnchor: document.getElementById('positioning_smartAnchor').checked
+      smartAnchor: document.getElementById('positioning_smartAnchor').checked,
+      fixedPosition: {
+        top: parseNumOrNull(document.getElementById('positioning_fixedTop').value),
+        right: parseNumOrNull(document.getElementById('positioning_fixedRight').value),
+        bottom: parseNumOrNull(document.getElementById('positioning_fixedBottom').value),
+        left: parseNumOrNull(document.getElementById('positioning_fixedLeft').value)
+      }
     };
 
     chrome.storage.sync.set({ ...result, positioning }, () => {
@@ -934,9 +1029,33 @@ function init() {
   const positioningMode = document.getElementById('positioning_mode');
   if (positioningMode) {
     positioningMode.addEventListener('change', (e) => {
-      updateAnchorSection(e.target.value);
+      updatePositioningSections(e.target.value);
     });
   }
+
+  const fixedCornerGrid = document.getElementById('fixedCornerGrid');
+  if (fixedCornerGrid) {
+    fixedCornerGrid.addEventListener('click', (e) => {
+      const btn = e.target.closest('.fixed-corner-btn');
+      if (btn) {
+        applyFixedCorner(btn.dataset.corner);
+      }
+    });
+  }
+
+  ['positioning_fixedLeft', 'positioning_fixedRight', 'positioning_fixedTop', 'positioning_fixedBottom'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', () => {
+        updateFixedCornerSelection({
+          left: parseNumOrNull(document.getElementById('positioning_fixedLeft').value),
+          right: parseNumOrNull(document.getElementById('positioning_fixedRight').value),
+          top: parseNumOrNull(document.getElementById('positioning_fixedTop').value),
+          bottom: parseNumOrNull(document.getElementById('positioning_fixedBottom').value)
+        });
+      });
+    }
+  });
 
   const sensitivitySlider = document.getElementById('positioning_mouseFollowSensitivity');
   const sensitivityValue = document.getElementById('positioning_mouseFollowSensitivityValue');

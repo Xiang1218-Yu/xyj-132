@@ -641,6 +641,22 @@
                   <button class="qlp-anchor-dir" data-dir="bottom" title="下方">↓</button>
                 </div>
               </div>
+              <div class="qlp-position-section" id="qlp-fixed-section" style="display:none;">
+                <div class="qlp-position-section-title">固定位置</div>
+                <div class="qlp-anchor-directions">
+                  <button class="qlp-anchor-dir" data-corner="top-left" title="左上角">↖</button>
+                  <button class="qlp-anchor-dir" data-corner="top-center" title="顶部居中">↑</button>
+                  <button class="qlp-anchor-dir" data-corner="top-right" title="右上角">↗</button>
+                  <div class="qlp-anchor-row">
+                    <button class="qlp-anchor-dir" data-corner="empty" disabled style="visibility:hidden">·</button>
+                    <button class="qlp-anchor-dir qlp-anchor-center" data-corner="center" title="屏幕中央">●</button>
+                    <button class="qlp-anchor-dir" data-corner="empty" disabled style="visibility:hidden">·</button>
+                  </div>
+                  <button class="qlp-anchor-dir" data-corner="bottom-left" title="左下角">↙</button>
+                  <button class="qlp-anchor-dir" data-corner="empty" disabled style="visibility:hidden">·</button>
+                  <button class="qlp-anchor-dir" data-corner="bottom-right" title="右下角">↘</button>
+                </div>
+              </div>
               <div class="qlp-position-section">
                 <div class="qlp-position-section-title">显示选项</div>
                 <label class="qlp-toggle-item">
@@ -752,7 +768,7 @@
       });
     });
 
-    panel.querySelectorAll('.qlp-anchor-dir').forEach(btn => {
+    panel.querySelectorAll('.qlp-anchor-dir[data-dir]').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const dir = btn.dataset.dir;
@@ -765,6 +781,25 @@
         }
 
         showToast(`锚点方向：${getAnchorDirectionLabel(dir)}`);
+      });
+    });
+
+    panel.querySelectorAll('.qlp-anchor-dir[data-corner]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const corner = btn.dataset.corner;
+        if (!corner || corner === 'empty') return;
+        applyCornerToFixedPosition(corner);
+        updatePositionDropdownState(panel);
+        if (lastMouseMoveEvent && previewPanel) {
+          positionPreviewPanel(lastMouseMoveEvent, previewPanel);
+        }
+        const cornerLabels = {
+          'top-left': '左上角', 'top-right': '右上角',
+          'bottom-left': '左下角', 'bottom-right': '右下角',
+          'top-center': '顶部居中', 'center': '屏幕中央'
+        };
+        showToast(`固定位置：${cornerLabels[corner] || corner}`);
       });
     });
 
@@ -1146,21 +1181,25 @@
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
     const margin = 10;
-    const fixed = settings.positioning.fixedPosition;
+    const fixed = settings.positioning.fixedPosition || {};
 
-    let left = margin;
-    let top = margin;
+    let left;
+    let top;
 
-    if (fixed.left !== null) {
+    if (fixed.left !== null && fixed.left !== undefined) {
       left = fixed.left;
-    } else if (fixed.right !== null) {
+    } else if (fixed.right !== null && fixed.right !== undefined) {
       left = viewportWidth - panelWidth - fixed.right;
+    } else {
+      left = (viewportWidth - panelWidth) / 2;
     }
 
-    if (fixed.top !== null) {
+    if (fixed.top !== null && fixed.top !== undefined) {
       top = fixed.top;
-    } else if (fixed.bottom !== null) {
+    } else if (fixed.bottom !== null && fixed.bottom !== undefined) {
       top = viewportHeight - panelHeight - fixed.bottom;
+    } else {
+      top = (viewportHeight - panelHeight) / 2;
     }
 
     if (left + panelWidth > viewportWidth - margin) left = viewportWidth - panelWidth - margin;
@@ -1265,10 +1304,20 @@
       result = calculateFixedPosition(panelWidth, panelHeight);
     } else if (mode === 'mouse') {
       result = calculateMouseFollowPosition(event, panelWidth, panelHeight, trigger.rect);
-    } else if (mode === 'anchor' && posSettings.anchorPosition !== 'auto') {
-      result = calculateAnchorPosition(posSettings.anchorPosition, trigger.rect, panelWidth, panelHeight);
+    } else if (mode === 'anchor') {
+      if (posSettings.anchorPosition !== 'auto') {
+        result = calculateAnchorPosition(posSettings.anchorPosition, trigger.rect, panelWidth, panelHeight);
+      } else if (posSettings.smartAnchor) {
+        result = selectOptimalAnchor(trigger.rect, panelWidth, panelHeight);
+      } else {
+        result = calculateAnchorPosition('bottom', trigger.rect, panelWidth, panelHeight);
+      }
     } else {
-      result = selectOptimalAnchor(trigger.rect, panelWidth, panelHeight);
+      if (posSettings.smartAnchor) {
+        result = selectOptimalAnchor(trigger.rect, panelWidth, panelHeight);
+      } else {
+        result = calculateAnchorPosition('bottom', trigger.rect, panelWidth, panelHeight);
+      }
     }
 
     currentAnchorPoint = {
@@ -1328,24 +1377,70 @@
     return labels[dir] || dir;
   }
 
+  function detectCurrentCorner(fixed) {
+    const hasLeft = fixed.left !== null && fixed.left !== undefined;
+    const hasRight = fixed.right !== null && fixed.right !== undefined;
+    const hasTop = fixed.top !== null && fixed.top !== undefined;
+    const hasBottom = fixed.bottom !== null && fixed.bottom !== undefined;
+    if (!hasLeft && !hasRight && !hasTop && !hasBottom) return 'center';
+    if (hasLeft && hasTop) return 'top-left';
+    if (hasRight && hasTop) return 'top-right';
+    if (hasLeft && hasBottom) return 'bottom-left';
+    if (hasRight && hasBottom) return 'bottom-right';
+    if (hasTop) return 'top-center';
+    return null;
+  }
+
+  function applyCornerToFixedPosition(corner) {
+    const margin = 20;
+    const fp = { top: null, right: null, bottom: null, left: null };
+    switch (corner) {
+      case 'top-left':
+        fp.top = margin; fp.left = margin; break;
+      case 'top-right':
+        fp.top = margin; fp.right = margin; break;
+      case 'bottom-left':
+        fp.bottom = margin; fp.left = margin; break;
+      case 'bottom-right':
+        fp.bottom = margin; fp.right = margin; break;
+      case 'top-center':
+        fp.top = margin; break;
+      case 'center':
+      default:
+        break;
+    }
+    settings.positioning.fixedPosition = fp;
+    savePositionSettings();
+  }
+
   function updatePositionDropdownState(panel) {
     const currentMode = settings.positioning.mode;
     const currentAnchor = settings.positioning.anchorPosition;
+    const currentCorner = detectCurrentCorner(settings.positioning.fixedPosition || {});
 
     panel.querySelectorAll('.qlp-position-option').forEach(btn => {
       btn.classList.toggle('qlp-active', btn.dataset.mode === currentMode);
     });
 
-    panel.querySelectorAll('.qlp-anchor-dir').forEach(btn => {
+    panel.querySelectorAll('.qlp-anchor-dir[data-dir]').forEach(btn => {
       btn.classList.toggle('qlp-active', btn.dataset.dir === currentAnchor);
     });
 
-    const anchorSection = panel.querySelector('#qlp-anchor-section');
-    anchorSection.style.display = currentMode === 'anchor' ? 'block' : 'none';
+    panel.querySelectorAll('.qlp-anchor-dir[data-corner]').forEach(btn => {
+      btn.classList.toggle('qlp-active', btn.dataset.corner === currentCorner);
+    });
 
-    panel.querySelector('#qlp-toggle-mouse-follow').checked = settings.positioning.enableMouseFollow;
-    panel.querySelector('#qlp-toggle-anchor-indicator').checked = settings.positioning.showAnchorIndicator;
-    panel.querySelector('#qlp-toggle-smooth-transition').checked = settings.positioning.smoothTransition;
+    const anchorSection = panel.querySelector('#qlp-anchor-section');
+    const fixedSection = panel.querySelector('#qlp-fixed-section');
+    if (anchorSection) anchorSection.style.display = currentMode === 'anchor' ? 'block' : 'none';
+    if (fixedSection) fixedSection.style.display = currentMode === 'fixed' ? 'block' : 'none';
+
+    const mouseFollowToggle = panel.querySelector('#qlp-toggle-mouse-follow');
+    if (mouseFollowToggle) mouseFollowToggle.checked = settings.positioning.enableMouseFollow;
+    const indicatorToggle = panel.querySelector('#qlp-toggle-anchor-indicator');
+    if (indicatorToggle) indicatorToggle.checked = settings.positioning.showAnchorIndicator;
+    const smoothToggle = panel.querySelector('#qlp-toggle-smooth-transition');
+    if (smoothToggle) smoothToggle.checked = settings.positioning.smoothTransition;
   }
 
   function scheduleHide() {
@@ -3650,31 +3745,128 @@
 
     if (settings.positioning.enableMouseFollow && previewPanel && previewPanel.classList.contains('qlp-visible') && !isPanelHovered) {
       const mode = settings.positioning.mode;
-      if (mode === 'mouse' || mode === 'auto') {
-        const panelWidth = settings.previewWidth;
-        const panelHeight = settings.previewHeight + 60;
-        const trigger = getTriggerPosition(event);
-        const result = calculateMouseFollowPosition(event, panelWidth, panelHeight, trigger.rect);
+      const panelWidth = settings.previewWidth;
+      const panelHeight = settings.previewHeight + 60;
+      const posSettings = settings.positioning;
+      const trigger = getTriggerPosition(event);
+      let result;
 
+      if (mode === 'fixed') {
+        return;
+      }
+
+      if (mode === 'mouse' || mode === 'auto') {
+        result = calculateMouseFollowPosition(event, panelWidth, panelHeight, trigger.rect);
+      } else if (mode === 'anchor') {
+        const anchorDir = posSettings.anchorPosition !== 'auto'
+          ? posSettings.anchorPosition
+          : currentAnchorPoint.direction;
+        result = calculateAnchorPositionWithMouseOffset(
+          anchorDir,
+          trigger.rect,
+          panelWidth,
+          panelHeight,
+          event
+        );
+      }
+
+      if (result) {
         targetPanelPos.left = result.left;
         targetPanelPos.top = result.top;
 
-        currentAnchorPoint.x = result.anchorX;
-        currentAnchorPoint.y = result.anchorY;
+        currentAnchorPoint.x = result.anchorX || trigger.x;
+        currentAnchorPoint.y = result.anchorY || trigger.y;
         currentAnchorPoint.direction = result.direction;
 
-        if (settings.positioning.smoothTransition) {
+        if (posSettings.smoothTransition) {
           startMouseFollowAnimation(previewPanel);
         } else {
           previewPanel.style.left = result.left + 'px';
           previewPanel.style.top = result.top + 'px';
         }
 
-        if (settings.positioning.showAnchorIndicator) {
-          updateAnchorIndicator(previewPanel, result.anchorX, result.anchorY, result.direction);
+        if (posSettings.showAnchorIndicator && result.direction !== 'fixed') {
+          updateAnchorIndicator(previewPanel, currentAnchorPoint.x, currentAnchorPoint.y, result.direction);
         }
       }
     }
+  }
+
+  function calculateAnchorPositionWithMouseOffset(anchorDirection, triggerRect, panelWidth, panelHeight, event) {
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const margin = 10;
+    const offsetX = settings.positioning.offsetX;
+    const offsetY = settings.positioning.offsetY;
+    const sensitivity = settings.positioning.mouseFollowSensitivity * 0.5;
+
+    const triggerCenterX = triggerRect.left + triggerRect.width / 2;
+    const triggerCenterY = triggerRect.top + triggerRect.height / 2;
+
+    const mouseOffsetX = (event.clientX - triggerCenterX) * sensitivity;
+    const mouseOffsetY = (event.clientY - triggerCenterY) * sensitivity;
+
+    let left, top, anchorX, anchorY;
+
+    switch (anchorDirection) {
+      case 'top':
+        left = triggerCenterX - panelWidth / 2 + mouseOffsetX;
+        top = triggerRect.top - panelHeight - offsetY + mouseOffsetY;
+        anchorX = triggerCenterX;
+        anchorY = triggerRect.top;
+        if (left < margin) left = margin;
+        if (left + panelWidth > viewportWidth - margin) left = viewportWidth - panelWidth - margin;
+        if (top < margin) {
+          top = triggerRect.bottom + offsetY + mouseOffsetY;
+          anchorDirection = 'bottom';
+        }
+        break;
+      case 'bottom':
+        left = triggerCenterX - panelWidth / 2 + mouseOffsetX;
+        top = triggerRect.bottom + offsetY + mouseOffsetY;
+        anchorX = triggerCenterX;
+        anchorY = triggerRect.bottom;
+        if (left < margin) left = margin;
+        if (left + panelWidth > viewportWidth - margin) left = viewportWidth - panelWidth - margin;
+        if (top + panelHeight > viewportHeight - margin) {
+          top = triggerRect.top - panelHeight - offsetY + mouseOffsetY;
+          anchorDirection = 'top';
+        }
+        break;
+      case 'left':
+        left = triggerRect.left - panelWidth - offsetX + mouseOffsetX;
+        top = triggerCenterY - panelHeight / 2 + mouseOffsetY;
+        anchorX = triggerRect.left;
+        anchorY = triggerCenterY;
+        if (top < margin) top = margin;
+        if (top + panelHeight > viewportHeight - margin) top = viewportHeight - panelHeight - margin;
+        if (left < margin) {
+          left = triggerRect.right + offsetX + mouseOffsetX;
+          anchorDirection = 'right';
+        }
+        break;
+      case 'right':
+        left = triggerRect.right + offsetX + mouseOffsetX;
+        top = triggerCenterY - panelHeight / 2 + mouseOffsetY;
+        anchorX = triggerRect.right;
+        anchorY = triggerCenterY;
+        if (top < margin) top = margin;
+        if (top + panelHeight > viewportHeight - margin) top = viewportHeight - panelHeight - margin;
+        if (left + panelWidth > viewportWidth - margin) {
+          left = triggerRect.left - panelWidth - offsetX + mouseOffsetX;
+          anchorDirection = 'left';
+        }
+        break;
+      default:
+        return selectOptimalAnchor(triggerRect, panelWidth, panelHeight);
+    }
+
+    if (left + panelWidth > viewportWidth - margin) left = viewportWidth - panelWidth - margin;
+    if (left < margin) left = margin;
+    if (top + panelHeight > viewportHeight - margin) top = viewportHeight - panelHeight - margin;
+    if (top < margin) top = margin;
+
+    return { direction: anchorDirection, left, top, anchorX, anchorY };
   }
 
   function init() {
