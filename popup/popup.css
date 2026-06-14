@@ -1597,6 +1597,32 @@ textarea#blacklist:focus {
   border-color: #fecaca;
 }
 
+.fav-offline-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  border-radius: 4px;
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.favorite-snapshot {
+  margin-top: 6px;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+}
+
+.favorite-snapshot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 100px;
+  object-fit: cover;
+}
+
 @media (prefers-color-scheme: dark) {
   .favorites-sidebar {
     background: #1f2937;
@@ -1686,5 +1712,14 @@ textarea#blacklist:focus {
   .fav-action-btn:hover {
     background: #4b5563;
     color: #d1d5db;
+  }
+
+  .fav-offline-badge {
+    background: #064e3b;
+    color: #6ee7b7;
+  }
+
+  .favorite-snapshot {
+    border-color: #4b5563;
   }
 }

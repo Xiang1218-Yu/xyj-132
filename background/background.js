@@ -847,6 +847,10 @@ function addFavorite(item, callback) {
       categoryId: item.categoryId || DEFAULT_CATEGORY_ID,
       notes: item.notes || '',
       security: item.security || null,
+      snapshot: item.snapshot || null,
+      pageText: item.pageText || null,
+      offlineAvailable: item.offlineAvailable || false,
+      cachedAt: item.cachedAt || null,
       createdAt: Date.now(),
       updatedAt: Date.now()
     };

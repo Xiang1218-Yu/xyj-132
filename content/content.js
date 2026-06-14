@@ -2334,6 +2334,7 @@
   function toggleFavoriteCurrent() {
     if (!currentLink || !chrome?.runtime) return;
     if (isFavoriteCurrent) {
+      if (!confirm('确定要取消收藏这个链接吗？')) return;
       chrome.runtime.sendMessage({ action: 'getFavorites' }, (response) => {
         if (response && response.success && response.favorites) {
           const fav = response.favorites.find(f => f.url === currentLink);
@@ -2349,29 +2350,144 @@
         }
       });
     } else {
+      const previewContent = document.querySelector('#qlp-preview-content');
+      let description = '';
+      let image = '';
+      let pageText = '';
+
+      if (previewContent) {
+        const descEl = previewContent.querySelector('.qlp-webpage-desc, .qlp-video-desc, .qlp-page-desc');
+        if (descEl) {
+          description = descEl.textContent?.trim() || '';
+        }
+        const imgEl = previewContent.querySelector('img');
+        if (imgEl && imgEl.src && imgEl.src.startsWith('http')) {
+          image = imgEl.src;
+        }
+        pageText = previewContent.textContent?.trim().slice(0, 2000) || '';
+      }
+
       const item = {
         url: currentLink,
         title: currentLinkTitle || currentLinkData?.title || currentLink,
-        description: '',
-        image: '',
+        description: description || currentLinkData?.description || '',
+        image: image || currentLinkData?.image || '',
         favicon: currentLinkData?.favicon || '',
         type: currentLinkData?.type || 'webpage',
         siteName: currentLinkData?.siteName || '',
         categoryId: 'default',
         notes: '',
-        security: currentLinkData?.security || null
+        security: currentLinkData?.security || null,
+        pageText: pageText,
+        offlineAvailable: true,
+        cachedAt: Date.now()
       };
+
+      try {
+        const snapshot = generateFavoriteSnapshot(currentLink, item);
+        if (snapshot) {
+          item.snapshot = snapshot;
+        }
+      } catch (e) {
+        console.debug('Snapshot generation skipped:', e);
+      }
+
       chrome.runtime.sendMessage({ action: 'addFavorite', item: item }, (response) => {
         if (response && response.success) {
           isFavoriteCurrent = true;
           updateFavoriteButtonState();
-          showToast('已收藏');
+          showToast('已收藏（支持离线查看）');
         } else if (response && response.error === 'duplicate') {
           isFavoriteCurrent = true;
           updateFavoriteButtonState();
           showToast('已收藏');
         }
       });
+    }
+  }
+
+  function generateFavoriteSnapshot(url, data) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 400;
+    canvas.height = 300;
+    const ctx = canvas.getContext('2d');
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    gradient.addColorStop(0, '#667eea');
+    gradient.addColorStop(1, '#764ba2');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.fillRect(20, 20, canvas.width - 40, canvas.height - 40);
+
+    ctx.fillStyle = '#333';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    const title = data.title || url;
+    const maxTitleWidth = canvas.width - 80;
+    let displayTitle = title;
+    if (ctx.measureText(title).width > maxTitleWidth) {
+      let truncated = title;
+      while (ctx.measureText(truncated + '...').width > maxTitleWidth && truncated.length > 0) {
+        truncated = truncated.slice(0, -1);
+      }
+      displayTitle = truncated + '...';
+    }
+    ctx.fillText(displayTitle, 40, 45);
+
+    ctx.fillStyle = '#666';
+    ctx.font = '12px sans-serif';
+    const maxUrlWidth = canvas.width - 80;
+    let displayUrl = url;
+    if (ctx.measureText(url).width > maxUrlWidth) {
+      let truncated = url;
+      while (ctx.measureText(truncated + '...').width > maxUrlWidth && truncated.length > 0) {
+        truncated = truncated.slice(0, -1);
+      }
+      displayUrl = truncated + '...';
+    }
+    ctx.fillText(displayUrl, 40, 75);
+
+    ctx.fillStyle = '#888';
+    ctx.font = '13px sans-serif';
+    const desc = data.description || '暂无描述';
+    const words = desc.split('');
+    let line = '';
+    let y = 110;
+    const maxWidth = canvas.width - 80;
+    const lineHeight = 20;
+    const maxLines = 5;
+    let lineCount = 0;
+
+    for (const char of words) {
+      const testLine = line + char;
+      if (ctx.measureText(testLine).width <= maxWidth) {
+        line = testLine;
+      } else {
+        if (lineCount < maxLines) {
+          ctx.fillText(line, 40, y);
+          y += lineHeight;
+          lineCount++;
+          line = char;
+        } else {
+          break;
+        }
+      }
+    }
+    if (line && lineCount < maxLines) {
+      ctx.fillText(line, 40, y);
+    }
+
+    ctx.fillStyle = '#667eea';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText('离线缓存 · ' + new Date().toLocaleDateString('zh-CN'), 40, canvas.height - 50);
+
+    try {
+      return canvas.toDataURL('image/jpeg', 0.85);
+    } catch (e) {
+      return null;
     }
   }
 
@@ -2389,35 +2505,58 @@
       qrcodePanel = document.createElement('div');
       qrcodePanel.className = 'qlp-qrcode-panel';
       qrcodePanel.id = 'qlp-qrcode-panel';
-      qrcodePanel.innerHTML = `
-        <div class="qlp-qrcode-header">
-          <span>链接二维码</span>
-          <button class="qlp-qrcode-close" id="qlp-qrcode-close">×</button>
-        </div>
-        <div class="qlp-qrcode-content" id="qlp-qrcode-content"></div>
-        <div class="qlp-qrcode-url" id="qlp-qrcode-url"></div>
-      `;
-      document.body.appendChild(qrcodePanel);
-      qrcodePanel.querySelector('#qlp-qrcode-close').addEventListener('click', (e) => {
+
+      const header = document.createElement('div');
+      header.className = 'qlp-qrcode-header';
+
+      const headerSpan = document.createElement('span');
+      headerSpan.textContent = '链接二维码';
+
+      const closeBtn = document.createElement('button');
+      closeBtn.className = 'qlp-qrcode-close';
+      closeBtn.id = 'qlp-qrcode-close';
+      closeBtn.textContent = '×';
+      closeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         hideQrcodePanel();
       });
+
+      header.appendChild(headerSpan);
+      header.appendChild(closeBtn);
+
+      const qrContent = document.createElement('div');
+      qrContent.className = 'qlp-qrcode-content';
+      qrContent.id = 'qlp-qrcode-content';
+
+      const qrUrl = document.createElement('div');
+      qrUrl.className = 'qlp-qrcode-url';
+      qrUrl.id = 'qlp-qrcode-url';
+
+      qrcodePanel.appendChild(header);
+      qrcodePanel.appendChild(qrContent);
+      qrcodePanel.appendChild(qrUrl);
+
       qrcodePanel.addEventListener('click', (e) => {
         e.stopPropagation();
       });
+
+      document.body.appendChild(qrcodePanel);
     }
 
     const qrContent = qrcodePanel.querySelector('#qlp-qrcode-content');
     const qrUrl = qrcodePanel.querySelector('#qlp-qrcode-url');
-    qrContent.innerHTML = '';
+    while (qrContent.firstChild) {
+      qrContent.removeChild(qrContent.firstChild);
+    }
     
     const canvas = document.createElement('canvas');
-    canvas.width = 200;
-    canvas.height = 200;
+    canvas.width = 220;
+    canvas.height = 220;
     generateQRCode(canvas, currentLink);
     qrContent.appendChild(canvas);
     
-    qrUrl.textContent = currentLink.length > 40 ? currentLink.slice(0, 40) + '...' : currentLink;
+    const displayUrl = currentLink.length > 40 ? currentLink.slice(0, 40) + '...' : currentLink;
+    qrUrl.textContent = displayUrl;
     qrUrl.title = currentLink;
 
     applyThemeToQrcodePanel();
@@ -2469,70 +2608,313 @@
   }
 
   function generateQRCode(canvas, text) {
+    const QR = {
+      VERSIONS: [
+        { totalCodewords: 26, ecCodewordsPerBlock: 10, blocksPerGroup1: 1, dataCodewordsPerBlock1: 16, blocksPerGroup2: 0, dataCodewordsPerBlock2: 0 },
+        { totalCodewords: 44, ecCodewordsPerBlock: 16, blocksPerGroup1: 1, dataCodewordsPerBlock1: 28, blocksPerGroup2: 0, dataCodewordsPerBlock2: 0 },
+        { totalCodewords: 70, ecCodewordsPerBlock: 26, blocksPerGroup1: 1, dataCodewordsPerBlock1: 44, blocksPerGroup2: 0, dataCodewordsPerBlock2: 0 },
+        { totalCodewords: 100, ecCodewordsPerBlock: 18, blocksPerGroup1: 2, dataCodewordsPerBlock1: 32, blocksPerGroup2: 0, dataCodewordsPerBlock2: 0 },
+        { totalCodewords: 134, ecCodewordsPerBlock: 24, blocksPerGroup1: 2, dataCodewordsPerBlock1: 43, blocksPerGroup2: 0, dataCodewordsPerBlock2: 0 },
+      ],
+
+      GALOIS_EXP: new Array(512),
+      GALOIS_LOG: new Array(256),
+
+      initGalois: function() {
+        let x = 1;
+        for (let i = 0; i < 255; i++) {
+          this.GALOIS_EXP[i] = x;
+          this.GALOIS_LOG[x] = i;
+          x <<= 1;
+          if (x & 0x100) x ^= 0x11d;
+        }
+        for (let i = 255; i < 512; i++) {
+          this.GALOIS_EXP[i] = this.GALOIS_EXP[i - 255];
+        }
+      },
+
+      galoisMultiply: function(a, b) {
+        if (a === 0 || b === 0) return 0;
+        return this.GALOIS_EXP[this.GALOIS_LOG[a] + this.GALOIS_LOG[b]];
+      },
+
+      generateECCodewords: function(data, ecCount) {
+        const log = this.GALOIS_LOG;
+        const exp = this.GALOIS_EXP;
+        
+        let generator = [1];
+        for (let i = 0; i < ecCount; i++) {
+          const newGenerator = new Array(generator.length + 1).fill(0);
+          for (let j = 0; j < generator.length; j++) {
+            newGenerator[j] ^= this.galoisMultiply(generator[j], 1);
+            newGenerator[j + 1] ^= this.galoisMultiply(generator[j], exp[i]);
+          }
+          generator = newGenerator;
+        }
+
+        const messagePoly = data.slice();
+        for (let i = 0; i < ecCount; i++) {
+          messagePoly.push(0);
+        }
+
+        for (let i = 0; i < data.length; i++) {
+          const coeff = messagePoly[i];
+          if (coeff !== 0) {
+            for (let j = 0; j < generator.length; j++) {
+              messagePoly[i + j] ^= this.galoisMultiply(generator[j], coeff);
+            }
+          }
+        }
+
+        return messagePoly.slice(data.length);
+      },
+
+      encodeByteMode: function(text) {
+        const bytes = new TextEncoder().encode(text);
+        const bits = [];
+        
+        bits.push(0, 1, 0, 0);
+        
+        const length = bytes.length;
+        for (let i = 7; i >= 0; i--) {
+          bits.push((length >> i) & 1);
+        }
+        
+        for (const byte of bytes) {
+          for (let i = 7; i >= 0; i--) {
+            bits.push((byte >> i) & 1);
+          }
+        }
+        
+        return bits;
+      },
+
+      addTerminator: function(bits, totalBits) {
+        const terminatorBits = Math.min(4, totalBits - bits.length);
+        for (let i = 0; i < terminatorBits; i++) {
+          bits.push(0);
+        }
+        
+        while (bits.length % 8 !== 0) {
+          bits.push(0);
+        }
+        
+        const padBytes = [0xec, 0x11];
+        let padIndex = 0;
+        while (bits.length < totalBits) {
+          const padByte = padBytes[padIndex % 2];
+          for (let i = 7; i >= 0; i--) {
+            bits.push((padByte >> i) & 1);
+            if (bits.length >= totalBits) break;
+          }
+          padIndex++;
+        }
+        
+        return bits;
+      },
+
+      bitsToBytes: function(bits) {
+        const bytes = [];
+        for (let i = 0; i < bits.length; i += 8) {
+          let byte = 0;
+          for (let j = 0; j < 8 && i + j < bits.length; j++) {
+            byte = (byte << 1) | bits[i + j];
+          }
+          bytes.push(byte);
+        }
+        return bytes;
+      },
+
+      structureFinalMessage: function(dataBytes, version, ecLevel) {
+        const v = this.VERSIONS[version - 1];
+        const ecCodewordsPerBlock = v.ecCodewordsPerBlock;
+        const totalDataCodewords = v.totalCodewords - ecCodewordsPerBlock * (v.blocksPerGroup1 + v.blocksPerGroup2);
+        
+        const shortBlocks = [];
+        for (let i = 0; i < v.blocksPerGroup1; i++) {
+          const start = i * v.dataCodewordsPerBlock1;
+          const data = dataBytes.slice(start, start + v.dataCodewordsPerBlock1);
+          const ec = this.generateECCodewords(data, ecCodewordsPerBlock);
+          shortBlocks.push({ data: data, ec: ec });
+        }
+        
+        for (let i = 0; i < v.blocksPerGroup2; i++) {
+          const start = v.blocksPerGroup1 * v.dataCodewordsPerBlock1 + i * v.dataCodewordsPerBlock2;
+          const data = dataBytes.slice(start, start + v.dataCodewordsPerBlock2);
+          const ec = this.generateECCodewords(data, ecCodewordsPerBlock);
+          shortBlocks.push({ data: data, ec: ec });
+        }
+        
+        const allBlocks = shortBlocks;
+        
+        const finalData = [];
+        const maxDataLength = Math.max(...allBlocks.map(b => b.data.length));
+        
+        for (let i = 0; i < maxDataLength; i++) {
+          for (const block of allBlocks) {
+            if (i < block.data.length) {
+              finalData.push(block.data[i]);
+            }
+          }
+        }
+        
+        const maxEcLength = Math.max(...allBlocks.map(b => b.ec.length));
+        for (let i = 0; i < maxEcLength; i++) {
+          for (const block of allBlocks) {
+            if (i < block.ec.length) {
+              finalData.push(block.ec[i]);
+            }
+          }
+        }
+        
+        return finalData;
+      },
+
+      buildMatrix: function(size, finalBytes) {
+        const matrix = [];
+        const reserved = [];
+        for (let r = 0; r < size; r++) {
+          matrix.push(new Array(size).fill(null));
+          reserved.push(new Array(size).fill(false));
+        }
+        
+        const placeFinder = (row, col) => {
+          for (let r = -1; r <= 7; r++) {
+            for (let c = -1; c <= 7; c++) {
+              const rr = row + r;
+              const cc = col + c;
+              if (rr >= 0 && rr < size && cc >= 0 && cc < size) {
+                reserved[rr][cc] = true;
+                if (r >= 0 && r <= 6 && c >= 0 && c <= 6) {
+                  const onBorder = (r === 0 || r === 6 || c === 0 || c === 6);
+                  const onInner = (r >= 2 && r <= 4 && c >= 2 && c <= 4);
+                  matrix[rr][cc] = onBorder || onInner;
+                } else {
+                  matrix[rr][cc] = false;
+                }
+              }
+            }
+          }
+        };
+        
+        placeFinder(0, 0);
+        placeFinder(0, size - 7);
+        placeFinder(size - 7, 0);
+        
+        for (let i = 8; i < size - 8; i++) {
+          matrix[6][i] = i % 2 === 0;
+          matrix[i][6] = i % 2 === 0;
+          reserved[6][i] = true;
+          reserved[i][6] = true;
+        }
+        
+        const alignmentPositions = [6, size - 7];
+        for (const r of alignmentPositions) {
+          for (const c of alignmentPositions) {
+            if (r === 6 && c === 6) continue;
+            if (r === 6 && c === size - 7) continue;
+            if (r === size - 7 && c === 6) continue;
+            for (let dr = -2; dr <= 2; dr++) {
+              for (let dc = -2; dc <= 2; dc++) {
+                const rr = r + dr;
+                const cc = c + dc;
+                if (rr >= 0 && rr < size && cc >= 0 && cc < size && !reserved[rr][cc]) {
+                  reserved[rr][cc] = true;
+                  const onBorder = (dr === -2 || dr === 2 || dc === -2 || dc === 2);
+                  const onInner = (dr === 0 && dc === 0);
+                  matrix[rr][cc] = onBorder || onInner;
+                }
+              }
+            }
+          }
+        }
+        
+        let bitIndex = 0;
+        let direction = -1;
+        for (let col = size - 1; col > 0; col -= 2) {
+          if (col === 6) col--;
+          for (let rowOffset = 0; rowOffset < size; rowOffset++) {
+            const row = direction === -1 ? size - 1 - rowOffset : rowOffset;
+            for (let cOffset = 0; cOffset < 2; cOffset++) {
+              const c = col - cOffset;
+              if (!reserved[row][c]) {
+                let bit = false;
+                if (bitIndex < finalBytes.length * 8) {
+                  const byteIndex = Math.floor(bitIndex / 8);
+                  const bitOffset = 7 - (bitIndex % 8);
+                  bit = ((finalBytes[byteIndex] >> bitOffset) & 1) === 1;
+                }
+                
+                const rowMod3 = (row + Math.floor(col / 3)) % 3 === 0;
+                const colMod3 = (col + Math.floor(row / 3)) % 3 === 0;
+                const mask = (row + col) % 2 === 0 || rowMod3 || colMod3;
+                
+                matrix[row][c] = bit !== mask;
+                bitIndex++;
+              }
+            }
+          }
+          direction *= -1;
+        }
+        
+        return matrix;
+      },
+
+      generate: function(text) {
+        this.initGalois();
+        
+        let version = 1;
+        let versionInfo = this.VERSIONS[0];
+        const dataBits = this.encodeByteMode(text);
+        
+        for (let v = 1; v <= 5; v++) {
+          const vi = this.VERSIONS[v - 1];
+          const totalDataCodewords = vi.totalCodewords - vi.ecCodewordsPerBlock * (vi.blocksPerGroup1 + vi.blocksPerGroup2);
+          const totalBits = totalDataCodewords * 8;
+          if (dataBits.length + 12 <= totalBits) {
+            version = v;
+            versionInfo = vi;
+            break;
+          }
+        }
+        
+        const totalDataCodewords = versionInfo.totalCodewords - versionInfo.ecCodewordsPerBlock * (versionInfo.blocksPerGroup1 + versionInfo.blocksPerGroup2);
+        const totalBits = totalDataCodewords * 8;
+        
+        const finalBits = this.addTerminator(dataBits.slice(), totalBits);
+        const dataBytes = this.bitsToBytes(finalBits);
+        
+        const finalBytes = this.structureFinalMessage(dataBytes, version, 'L');
+        
+        const size = 17 + version * 4;
+        const matrix = this.buildMatrix(size, finalBytes);
+        
+        return { matrix: matrix, size: size };
+      }
+    };
+
+    const result = QR.generate(text);
     const ctx = canvas.getContext('2d');
-    const size = 200;
-    const modules = 25;
-    const moduleSize = size / modules;
+    const canvasSize = canvas.width;
+    const padding = 16;
+    const moduleSize = (canvasSize - padding * 2) / result.size;
 
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, size, size);
+    ctx.fillRect(0, 0, canvasSize, canvasSize);
     ctx.fillStyle = '#000000';
 
-    function isDark(row, col) {
-      if (row < 0 || row >= modules || col < 0 || col >= modules) return false;
-      
-      if ((row < 7 && col < 7) ||
-          (row < 7 && col >= modules - 7) ||
-          (row >= modules - 7 && col < 7)) {
-        if (row < 7 && col < 7) {
-          if (row === 0 || row === 6 || col === 0 || col === 6) return true;
-          if (row >= 2 && row <= 4 && col >= 2 && col <= 4) return row === 2 || row === 4 || col === 2 || col === 4;
-          return false;
-        }
-        if (row < 7 && col >= modules - 7) {
-          const c = col - (modules - 7);
-          if (row === 0 || row === 6 || c === 0 || c === 6) return true;
-          if (row >= 2 && row <= 4 && c >= 2 && c <= 4) return row === 2 || row === 4 || c === 2 || c === 4;
-          return false;
-        }
-        if (row >= modules - 7 && col < 7) {
-          const r = row - (modules - 7);
-          if (r === 0 || r === 6 || col === 0 || col === 6) return true;
-          if (r >= 2 && r <= 4 && col >= 2 && col <= 4) return r === 2 || r === 4 || col === 2 || col === 4;
-          return false;
-        }
-      }
-
-      if (row === 6 || col === 6) return true;
-      if (row === modules - 7 || col === modules - 7) return true;
-
-      let hash = 0;
-      const str = text + row + ',' + col;
-      for (let i = 0; i < str.length; i++) {
-        hash = ((hash << 5) - hash) + str.charCodeAt(i);
-        hash |= 0;
-      }
-      return Math.abs(hash) % 3 === 0;
-    }
-
-    for (let row = 0; row < modules; row++) {
-      for (let col = 0; col < modules; col++) {
-        if (isDark(row, col)) {
-          ctx.fillRect(col * moduleSize, row * moduleSize, moduleSize, moduleSize);
+    for (let row = 0; row < result.size; row++) {
+      for (let col = 0; col < result.size; col++) {
+        if (result.matrix[row][col]) {
+          ctx.fillRect(
+            padding + col * moduleSize,
+            padding + row * moduleSize,
+            Math.ceil(moduleSize),
+            Math.ceil(moduleSize)
+          );
         }
       }
     }
-
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(7 * moduleSize, 7 * moduleSize, 11 * moduleSize, 11 * moduleSize);
-    
-    ctx.fillStyle = '#333';
-    ctx.font = 'bold 10px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('QR', size / 2, size / 2 - 5);
-    ctx.font = '8px sans-serif';
-    ctx.fillText('预览', size / 2, size / 2 + 7);
   }
 
   function showShortcutHint() {

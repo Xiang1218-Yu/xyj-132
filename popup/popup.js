@@ -184,34 +184,84 @@ function renderFavoritesList(favorites) {
     const cat = allCategories.find(c => c.id === fav.categoryId);
     const date = new Date(fav.createdAt || Date.now()).toLocaleDateString('zh-CN');
     
-    item.innerHTML = `
-      <div class="favorite-icon">${typeIcons[fav.type] || '🔗'}</div>
-      <div class="favorite-info">
-        <div class="favorite-title">${fav.title || fav.url}</div>
-        <div class="favorite-url">${fav.url}</div>
-        <div class="favorite-meta">
-          ${cat ? `<span class="fav-cat-badge" style="background:${cat.color}15;color:${cat.color}">${cat.name}</span>` : ''}
-          <span class="favorite-date">${date}</span>
-        </div>
-      </div>
-      <div class="favorite-actions">
-        <button class="fav-action-btn" title="打开" data-action="open">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
-        </button>
-        <button class="fav-action-btn" title="删除" data-action="delete">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-        </button>
-      </div>
-    `;
-    
-    item.querySelector('[data-action="open"]').addEventListener('click', (e) => {
+    const iconDiv = document.createElement('div');
+    iconDiv.className = 'favorite-icon';
+    iconDiv.textContent = typeIcons[fav.type] || '🔗';
+    item.appendChild(iconDiv);
+
+    const infoDiv = document.createElement('div');
+    infoDiv.className = 'favorite-info';
+
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'favorite-title';
+    titleDiv.textContent = fav.title || fav.url;
+    infoDiv.appendChild(titleDiv);
+
+    const urlDiv = document.createElement('div');
+    urlDiv.className = 'favorite-url';
+    urlDiv.textContent = fav.url;
+    infoDiv.appendChild(urlDiv);
+
+    const metaDiv = document.createElement('div');
+    metaDiv.className = 'favorite-meta';
+
+    if (cat) {
+      const catBadge = document.createElement('span');
+      catBadge.className = 'fav-cat-badge';
+      catBadge.style.background = cat.color + '15';
+      catBadge.style.color = cat.color;
+      catBadge.textContent = cat.name;
+      metaDiv.appendChild(catBadge);
+    }
+
+    if (fav.offlineAvailable) {
+      const offlineBadge = document.createElement('span');
+      offlineBadge.className = 'fav-offline-badge';
+      offlineBadge.textContent = '离线可用';
+      metaDiv.appendChild(offlineBadge);
+    }
+
+    const dateSpan = document.createElement('span');
+    dateSpan.className = 'favorite-date';
+    dateSpan.textContent = date;
+    metaDiv.appendChild(dateSpan);
+
+    infoDiv.appendChild(metaDiv);
+
+    if (fav.snapshot) {
+      const snapshotDiv = document.createElement('div');
+      snapshotDiv.className = 'favorite-snapshot';
+      const snapshotImg = document.createElement('img');
+      snapshotImg.src = fav.snapshot;
+      snapshotImg.alt = '离线快照';
+      snapshotDiv.appendChild(snapshotImg);
+      infoDiv.appendChild(snapshotDiv);
+    }
+
+    item.appendChild(infoDiv);
+
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'favorite-actions';
+
+    const openBtn = document.createElement('button');
+    openBtn.className = 'fav-action-btn';
+    openBtn.title = '打开';
+    openBtn.dataset.action = 'open';
+    openBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>';
+    openBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       chrome.tabs.create({ url: fav.url });
     });
-    
-    item.querySelector('[data-action="delete"]').addEventListener('click', (e) => {
+    actionsDiv.appendChild(openBtn);
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'fav-action-btn';
+    deleteBtn.title = '删除';
+    deleteBtn.dataset.action = 'delete';
+    deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
+    deleteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (confirm('确定要删除这个收藏吗？')) {
+      if (confirm('确定要删除这个收藏吗？删除后无法恢复。')) {
         chrome.runtime.sendMessage({ action: 'deleteFavorite', favoriteId: fav.id }, (resp) => {
           if (resp && resp.success) {
             allFavorites = allFavorites.filter(f => f.id !== fav.id);
@@ -221,9 +271,12 @@ function renderFavoritesList(favorites) {
         });
       }
     });
-    
+    actionsDiv.appendChild(deleteBtn);
+
+    item.appendChild(actionsDiv);
+
     item.addEventListener('click', () => {
-      chrome.runtime.sendMessage({ action: 'rePreview', url: fav.url });
+      rePreview(fav.url);
     });
     
     list.appendChild(item);
