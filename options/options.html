@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickLink Preview - 设置</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #333;
+      background: #f0f2f5;
+    }
+
+    .container {
+      max-width: 720px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      color: #111827;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header p {
+      color: #6b7280;
+      font-size: 15px;
+    }
+
+    .card {
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+
+    .card-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #111827;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .form-label {
+      display: block;
+      font-weight: 500;
+      color: #374151;
+      margin-bottom: 8px;
+    }
+
+    .form-desc {
+      font-size: 13px;
+      color: #6b7280;
+      margin-top: 4px;
+    }
+
+    .radio-group {
+      display: flex;
+      gap: 12px;
+    }
+
+    .radio-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 16px;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .radio-item:hover {
+      border-color: #c7d2fe;
+    }
+
+    .radio-item input {
+      accent-color: #667eea;
+    }
+
+    .radio-item:has(input:checked) {
+      border-color: #667eea;
+      background: #f0edff;
+    }
+
+    .radio-title {
+      font-weight: 600;
+      color: #111827;
+    }
+
+    .radio-desc {
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .slider-row input[type="range"] {
+      flex: 1;
+      accent-color: #667eea;
+      cursor: pointer;
+    }
+
+    .slider-value {
+      min-width: 80px;
+      text-align: right;
+      font-weight: 500;
+      color: #667eea;
+    }
+
+    .size-inputs {
+      display: flex;
+      gap: 16px;
+    }
+
+    .size-input {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .size-input input[type="number"] {
+      padding: 10px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+
+    .size-input input[type="number"]:focus {
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .toggle-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .toggle-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px;
+      background: #f9fafb;
+      border-radius: 8px;
+    }
+
+    .toggle-item input[type="checkbox"] {
+      display: none;
+    }
+
+    .toggle-slider {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      background: #d1d5db;
+      border-radius: 12px;
+      transition: background 0.2s ease;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      background: #ffffff;
+      border-radius: 50%;
+      transition: transform 0.2s ease;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    }
+
+    .toggle-item input:checked + .toggle-slider {
+      background: #667eea;
+    }
+
+    .toggle-item input:checked + .toggle-slider::before {
+      transform: translateX(20px);
+    }
+
+    .toggle-info {
+      flex: 1;
+    }
+
+    .toggle-title {
+      font-weight: 500;
+      color: #111827;
+    }
+
+    .toggle-desc {
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 100px;
+      padding: 12px;
+      font-size: 13px;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+
+    textarea:focus {
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 24px;
+      font-size: 14px;
+      font-weight: 500;
+      color: #ffffff;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 24px;
+      font-size: 14px;
+      font-weight: 500;
+      color: #4b5563;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-secondary:hover {
+      background: #f9fafb;
+      border-color: #d1d5db;
+    }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      padding-top: 8px;
+    }
+
+    .toast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 14px 24px;
+      background: #10b981;
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 500;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      opacity: 0;
+      transform: translateY(-20px);
+      transition: all 0.3s ease;
+      pointer-events: none;
+      z-index: 1000;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body {
+        background: #0f172a;
+        color: #e2e8f0;
+      }
+
+      .header h1 {
+        color: #f1f5f9;
+      }
+
+      .header p {
+        color: #94a3b8;
+      }
+
+      .card {
+        background: #1e293b;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      }
+
+      .card-title {
+        color: #f1f5f9;
+        border-bottom-color: #334155;
+      }
+
+      .form-label {
+        color: #e2e8f0;
+      }
+
+      .form-desc {
+        color: #94a3b8;
+      }
+
+      .radio-item {
+        border-color: #334155;
+      }
+
+      .radio-item:hover {
+        border-color: #475569;
+      }
+
+      .radio-item:has(input:checked) {
+        border-color: #667eea;
+        background: #1e1b4b;
+      }
+
+      .radio-title {
+        color: #f1f5f9;
+      }
+
+      .radio-desc {
+        color: #94a3b8;
+      }
+
+      .size-input input[type="number"] {
+        background: #0f172a;
+        border-color: #334155;
+        color: #f1f5f9;
+      }
+
+      .size-input input[type="number"]:focus {
+        border-color: #667eea;
+      }
+
+      .toggle-item {
+        background: #0f172a;
+      }
+
+      .toggle-title {
+        color: #f1f5f9;
+      }
+
+      .toggle-desc {
+        color: #94a3b8;
+      }
+
+      .toggle-slider {
+        background: #475569;
+      }
+
+      textarea {
+        background: #0f172a;
+        border-color: #334155;
+        color: #e2e8f0;
+      }
+
+      textarea:focus {
+        border-color: #667eea;
+      }
+
+      .btn-secondary {
+        background: #1e293b;
+        border-color: #334155;
+        color: #e2e8f0;
+      }
+
+      .btn-secondary:hover {
+        background: #334155;
+        border-color: #475569;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>QuickLink Preview</h1>
+      <p>快速预览网页链接 - 悬停或点击链接即可弹窗预览内容</p>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">基础设置</h2>
+      
+      <div class="form-group">
+        <label class="form-label">触发方式</label>
+        <div class="radio-group">
+          <label class="radio-item">
+            <input type="radio" name="triggerMode" value="hover" checked>
+            <span class="radio-title">悬停预览</span>
+            <span class="radio-desc">鼠标悬停在链接上显示预览</span>
+          </label>
+          <label class="radio-item">
+            <input type="radio" name="triggerMode" value="click">
+            <span class="radio-title">点击预览</span>
+            <span class="radio-desc">点击链接显示预览弹窗</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group" id="hoverDelayGroup">
+        <label class="form-label">悬停延迟时间</label>
+        <div class="slider-row">
+          <input type="range" id="hoverDelay" min="100" max="3000" step="100" value="500">
+          <span class="slider-value"><span id="hoverDelayValue">500</span> 毫秒</span>
+        </div>
+        <p class="form-desc">鼠标悬停多久后显示预览窗口</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">预览窗口</h2>
+      
+      <div class="form-group">
+        <label class="form-label">窗口大小</label>
+        <div class="size-inputs">
+          <div class="size-input">
+            <label>宽度 (像素)</label>
+            <input type="number" id="previewWidth" min="300" max="1200" value="600">
+          </div>
+          <div class="size-input">
+            <label>高度 (像素)</label>
+            <input type="number" id="previewHeight" min="200" max="800" value="400">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">预览类型</h2>
+      
+      <div class="toggle-list">
+        <label class="toggle-item">
+          <input type="checkbox" id="enableImagePreview" checked>
+          <span class="toggle-slider"></span>
+          <div class="toggle-info">
+            <div class="toggle-title">图片预览</div>
+            <div class="toggle-desc">图片链接直接显示图片内容</div>
+          </div>
+        </label>
+        <label class="toggle-item">
+          <input type="checkbox" id="enableVideoPreview" checked>
+          <span class="toggle-slider"></span>
+          <div class="toggle-info">
+            <div class="toggle-title">视频预览</div>
+            <div class="toggle-desc">视频文件和视频网站链接（YouTube、Bilibili 等）</div>
+          </div>
+        </label>
+        <label class="toggle-item">
+          <input type="checkbox" id="enableAudioPreview" checked>
+          <span class="toggle-slider"></span>
+          <div class="toggle-info">
+            <div class="toggle-title">音乐预览</div>
+            <div class="toggle-desc">音频文件和音乐网站链接</div>
+          </div>
+        </label>
+        <label class="toggle-item">
+          <input type="checkbox" id="enableWebpagePreview" checked>
+          <span class="toggle-slider"></span>
+          <div class="toggle-info">
+            <div class="toggle-title">网页预览</div>
+            <div class="toggle-desc">普通网页链接显示标题、描述和缩略图</div>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">黑名单</h2>
+      
+      <div class="form-group">
+        <label class="form-label">不显示预览的网站</label>
+        <textarea id="blacklist" placeholder="每行一个域名，例如：&#10;example.com&#10;google.com"></textarea>
+        <p class="form-desc">在这些网站上，链接不会显示预览窗口</p>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn-secondary" id="resetBtn">恢复默认</button>
+      <button class="btn-primary" id="saveBtn">保存设置</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">设置已保存</div>
+
+  <script>
+    const DEFAULT_SETTINGS = {
+      triggerMode: 'hover',
+      hoverDelay: 500,
+      previewWidth: 600,
+      previewHeight: 400,
+      enableVideoPreview: true,
+      enableAudioPreview: true,
+      enableImagePreview: true,
+      enableWebpagePreview: true,
+      blacklist: []
+    };
+
+    function loadSettings() {
+      chrome.storage.sync.get(DEFAULT_SETTINGS, (result) => {
+        document.querySelector(`input[name="triggerMode"][value="${result.triggerMode}"]`).checked = true;
+        
+        const hoverDelaySlider = document.getElementById('hoverDelay');
+        const hoverDelayValue = document.getElementById('hoverDelayValue');
+        hoverDelaySlider.value = result.hoverDelay;
+        hoverDelayValue.textContent = result.hoverDelay;
+        
+        document.getElementById('previewWidth').value = result.previewWidth;
+        document.getElementById('previewHeight').value = result.previewHeight;
+        
+        document.getElementById('enableImagePreview').checked = result.enableImagePreview;
+        document.getElementById('enableVideoPreview').checked = result.enableVideoPreview;
+        document.getElementById('enableAudioPreview').checked = result.enableAudioPreview;
+        document.getElementById('enableWebpagePreview').checked = result.enableWebpagePreview;
+        
+        document.getElementById('blacklist').value = result.blacklist.join('\n');
+        
+        updateHoverDelayGroup(result.triggerMode);
+      });
+    }
+
+    function saveSettings() {
+      const triggerMode = document.querySelector('input[name="triggerMode"]:checked').value;
+      const hoverDelay = parseInt(document.getElementById('hoverDelay').value, 10);
+      const previewWidth = parseInt(document.getElementById('previewWidth').value, 10);
+      const previewHeight = parseInt(document.getElementById('previewHeight').value, 10);
+      
+      const blacklistText = document.getElementById('blacklist').value;
+      const blacklist = blacklistText
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+      
+      const settings = {
+        triggerMode: triggerMode,
+        hoverDelay: hoverDelay,
+        previewWidth: previewWidth,
+        previewHeight: previewHeight,
+        enableImagePreview: document.getElementById('enableImagePreview').checked,
+        enableVideoPreview: document.getElementById('enableVideoPreview').checked,
+        enableAudioPreview: document.getElementById('enableAudioPreview').checked,
+        enableWebpagePreview: document.getElementById('enableWebpagePreview').checked,
+        blacklist: blacklist
+      };
+      
+      chrome.storage.sync.set(settings, () => {
+        showToast('设置已保存');
+      });
+    }
+
+    function resetSettings() {
+      chrome.storage.sync.set(DEFAULT_SETTINGS, () => {
+        loadSettings();
+        showToast('已恢复默认设置');
+      });
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.add('show');
+      
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 2500);
+    }
+
+    function updateHoverDelayGroup(triggerMode) {
+      const group = document.getElementById('hoverDelayGroup');
+      group.style.display = triggerMode === 'hover' ? 'block' : 'none';
+    }
+
+    function init() {
+      loadSettings();
+      
+      document.querySelectorAll('input[name="triggerMode"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+          updateHoverDelayGroup(e.target.value);
+        });
+      });
+      
+      document.getElementById('hoverDelay').addEventListener('input', (e) => {
+        document.getElementById('hoverDelayValue').textContent = e.target.value;
+      });
+      
+      document.getElementById('saveBtn').addEventListener('click', saveSettings);
+      document.getElementById('resetBtn').addEventListener('click', () => {
+        if (confirm('确定要恢复默认设置吗？')) {
+          resetSettings();
+        }
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
