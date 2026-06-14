@@ -22,18 +22,45 @@ body {
 
 .popup-header {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 12px;
-  padding: 16px 20px;
+  padding: 12px 16px 10px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: #ffffff;
-  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.popup-header-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .tab-switch {
   display: flex;
   gap: 4px;
-  margin-left: auto;
+  overflow-x: auto;
+  flex-shrink: 0;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.3) transparent;
+}
+
+.tab-switch::-webkit-scrollbar {
+  height: 4px;
+}
+
+.tab-switch::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tab-switch::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.3);
+  border-radius: 2px;
+}
+
+.tab-switch::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.5);
 }
 
 .tab-btn {
