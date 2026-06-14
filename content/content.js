@@ -24,6 +24,42 @@
   let currentLink = null;
   let isPanelHovered = false;
 
+  const NO_EMBED_DOMAINS = [
+    'google.com', 'google.com.hk', 'google.co.jp',
+    'baidu.com', 'baidu.cn',
+    'github.com', 'github.io',
+    'twitter.com', 'x.com',
+    'facebook.com', 'fb.com',
+    'instagram.com',
+    'netflix.com',
+    'taobao.com', 'tmall.com', 'jd.com',
+    'qq.com', 'weixin.qq.com',
+    'weibo.com', 'weibo.cn',
+    'zhihu.com',
+    'bilibili.com', 'bilibili.tv',
+    'youtube.com', 'youtu.be',
+    'amazon.com', 'amazon.cn',
+    'douyin.com', 'iesdouyin.com',
+    'kuaishou.com',
+    'xiaohongshu.com', 'xhslink.com',
+    'pinduoduo.com', 'yangkeduo.com',
+    'meituan.com', 'dianping.com',
+    'ele.me',
+    'douban.com',
+    'music.163.com', 'y.qq.com',
+    'linkedin.com', 'linkedin.cn'
+  ];
+
+  function canEmbedUrl(url) {
+    try {
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname.toLowerCase();
+      return !NO_EMBED_DOMAINS.some(domain => hostname.includes(domain));
+    } catch (e) {
+      return false;
+    }
+  }
+
   function isValidUrl(url) {
     if (!url) return false;
     if (url.startsWith('javascript:')) return false;
@@ -443,7 +479,7 @@
     }
 
     const urlObj = new URL(url);
-    const canEmbed = !['google.com', 'github.com', 'twitter.com', 'facebook.com', 'instagram.com', 'netflix.com'].some(d => urlObj.hostname.includes(d));
+    const canEmbed = canEmbedUrl(url);
 
     container.innerHTML = `
       <div class="qlp-webpage-preview">
@@ -457,25 +493,145 @@
                 <path d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1zm7 0h-1.5v-.5h-2v3h2V13H18v1c0 .55-.45 1-1 1h-3c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1z"/>
               </svg>
               网页预览
-            </button>` : ''}
+            </button>` : `<span class="qlp-no-embed-hint" title="该网站禁止嵌入预览">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+              </svg>
+              无法嵌入
+            </span>`}
           </div>
           <div class="qlp-webpage-title">${title}</div>
           ${description ? `<div class="qlp-webpage-description">${description}</div>` : ''}
           <div class="qlp-webpage-url" title="${safeUrl}">${safeUrl}</div>
+          ${!canEmbed ? `<div class="qlp-embed-notice">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+              </svg>
+              该网站设置了安全策略，无法在弹窗中预览，请点击右上角在新标签页打开
+            </div>` : ''}
         </div>
         <div class="qlp-embed-container" style="display: none;">
-          <iframe src="${safeUrl}" class="qlp-embed-iframe" sandbox="allow-scripts allow-same-origin allow-popups" loading="lazy"></iframe>
+          <div class="qlp-embed-header">
+            <span class="qlp-embed-url">${safeUrl}</span>
+            <button class="qlp-embed-refresh" title="刷新">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+              </svg>
+            </button>
+            <button class="qlp-embed-back" title="返回摘要">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+              </svg>
+            </button>
+          </div>
+          <div class="qlp-embed-iframe-wrapper">
+            <iframe src="about:blank" class="qlp-embed-iframe" sandbox="allow-scripts allow-same-origin allow-popups allow-forms" loading="lazy" data-src="${safeUrl}"></iframe>
+            <div class="qlp-embed-loading" style="display: none;">
+              <div class="qlp-spinner"></div>
+              <div class="qlp-loading-text">正在加载网页...</div>
+            </div>
+            <div class="qlp-embed-error" style="display: none;">
+              <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+              </svg>
+              <div class="qlp-embed-error-title">无法加载网页</div>
+              <div class="qlp-embed-error-desc">该网站可能禁止了 iframe 嵌入</div>
+              <a class="qlp-embed-open-btn" href="${safeUrl}" target="_blank" rel="noopener noreferrer">在新标签页打开</a>
+            </div>
+          </div>
         </div>
       </div>
     `;
 
     const toggleBtn = container.querySelector('.qlp-embed-toggle');
+    const embedContainer = container.querySelector('.qlp-embed-container');
+    const infoDiv = container.querySelector('.qlp-webpage-info');
+    const mediaContainer = container.querySelector('.qlp-media-container, .qlp-og-image-container');
+    const iframe = container.querySelector('.qlp-embed-iframe');
+    const embedLoading = container.querySelector('.qlp-embed-loading');
+    const embedError = container.querySelector('.qlp-embed-error');
+    const backBtn = container.querySelector('.qlp-embed-back');
+    const refreshBtn = container.querySelector('.qlp-embed-refresh');
+
+    function showEmbedError() {
+      if (embedLoading) embedLoading.style.display = 'none';
+      if (embedError) embedError.style.display = 'flex';
+      if (iframe) iframe.style.display = 'none';
+    }
+
+    function hideEmbedError() {
+      if (embedLoading) embedLoading.style.display = 'none';
+      if (embedError) embedError.style.display = 'none';
+      if (iframe) iframe.style.display = 'block';
+    }
+
+    if (iframe) {
+      let loadTimeout = null;
+      
+      iframe.addEventListener('load', () => {
+        if (loadTimeout) {
+          clearTimeout(loadTimeout);
+          loadTimeout = null;
+        }
+        try {
+          if (iframe.src && iframe.src !== 'about:blank') {
+            setTimeout(() => {
+              try {
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+                if (!iframeDoc || iframeDoc.body.innerHTML === '' || iframeDoc.body.innerHTML === '<html><head></head><body></body></html>') {
+                  showEmbedError();
+                } else {
+                  hideEmbedError();
+                }
+              } catch (e) {
+                hideEmbedError();
+              }
+            }, 1000);
+          }
+        } catch (e) {
+          hideEmbedError();
+        }
+      });
+
+      iframe.addEventListener('error', () => {
+        if (loadTimeout) {
+          clearTimeout(loadTimeout);
+          loadTimeout = null;
+        }
+        showEmbedError();
+      });
+    }
+
+    if (backBtn) {
+      backBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (embedContainer) embedContainer.style.display = 'none';
+        if (infoDiv) infoDiv.style.display = '';
+        if (mediaContainer) mediaContainer.style.display = '';
+        if (toggleBtn) toggleBtn.classList.remove('qlp-embed-active');
+        if (iframe) iframe.src = 'about:blank';
+      });
+    }
+
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (iframe) {
+          const src = iframe.getAttribute('data-src');
+          if (embedLoading) embedLoading.style.display = 'flex';
+          if (embedError) embedError.style.display = 'none';
+          iframe.style.display = 'block';
+          iframe.src = 'about:blank';
+          setTimeout(() => {
+            iframe.src = src;
+          }, 50);
+        }
+      });
+    }
+
     if (toggleBtn) {
       toggleBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const embedContainer = container.querySelector('.qlp-embed-container');
-        const infoDiv = container.querySelector('.qlp-webpage-info');
-        const mediaContainer = container.querySelector('.qlp-media-container, .qlp-og-image-container');
         const isActive = toggleBtn.classList.contains('qlp-embed-active');
         
         if (isActive) {
@@ -483,15 +639,26 @@
           embedContainer.style.display = 'none';
           if (infoDiv) infoDiv.style.display = '';
           if (mediaContainer) mediaContainer.style.display = '';
-          const iframe = embedContainer.querySelector('iframe');
           if (iframe) iframe.src = 'about:blank';
         } else {
           toggleBtn.classList.add('qlp-embed-active');
           embedContainer.style.display = 'block';
           if (infoDiv) infoDiv.style.display = 'none';
           if (mediaContainer) mediaContainer.style.display = 'none';
-          const iframe = embedContainer.querySelector('iframe');
-          if (iframe) iframe.src = url;
+          if (iframe) {
+            const src = iframe.getAttribute('data-src');
+            if (embedLoading) embedLoading.style.display = 'flex';
+            if (embedError) embedError.style.display = 'none';
+            iframe.style.display = 'block';
+            iframe.src = src;
+            
+            if (loadTimeout) clearTimeout(loadTimeout);
+            loadTimeout = setTimeout(() => {
+              if (embedLoading && embedLoading.style.display !== 'none') {
+                showEmbedError();
+              }
+            }, 8000);
+          }
         }
       });
     }
@@ -511,8 +678,7 @@
     const safeIcon = escapeHtml(icon);
     const safeType = typeLabels[type] || '链接';
 
-    const urlObj = new URL(url);
-    const canEmbed = !['google.com', 'github.com', 'twitter.com', 'facebook.com', 'instagram.com', 'netflix.com'].some(d => urlObj.hostname.includes(d));
+    const canEmbed = canEmbedUrl(url);
 
     container.innerHTML = `
       <div class="qlp-webpage-preview">
@@ -524,41 +690,195 @@
           </div>
           <div class="qlp-webpage-title">${safeUrl}</div>
           <div class="qlp-webpage-description">
-            ${canEmbed ? '点击下方按钮可尝试在预览中打开网页，或点击右上角在新标签页打开' : '点击右上角按钮在新标签页中打开查看完整内容'}
+            ${canEmbed ? '点击下方按钮可尝试在预览中打开网页，或点击右上角在新标签页打开' : '该网站设置了安全策略，无法在弹窗中预览，请点击右上角在新标签页打开'}
           </div>
-          ${canEmbed ? `<button class="qlp-embed-toggle qlp-embed-toggle-full" data-url="${safeUrl}" style="margin-top: 12px;">
+          ${canEmbed ? `<button class="qlp-embed-toggle qlp-embed-toggle-full" data-url="${safeUrl}">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
                 <path d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1zm7 0h-1.5v-.5h-2v3h2V13H18v1c0 .55-.45 1-1 1h-3c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1z"/>
               </svg>
               尝试网页预览
-            </button>` : ''}
+            </button>` : `<a class="qlp-embed-open-btn" href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="margin-top: 12px; display: inline-flex;">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>
+              </svg>
+              在新标签页打开
+            </a>`}
         </div>
         <div class="qlp-embed-container" style="display: none;">
-          <iframe src="${safeUrl}" class="qlp-embed-iframe" sandbox="allow-scripts allow-same-origin allow-popups" loading="lazy"></iframe>
+          <div class="qlp-embed-header">
+            <span class="qlp-embed-url">${safeUrl}</span>
+            <button class="qlp-embed-refresh" title="刷新">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+              </svg>
+            </button>
+            <button class="qlp-embed-back" title="返回摘要">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+              </svg>
+            </button>
+          </div>
+          <div class="qlp-embed-iframe-wrapper">
+            <iframe src="about:blank" class="qlp-embed-iframe" sandbox="allow-scripts allow-same-origin allow-popups allow-forms" loading="lazy" data-src="${safeUrl}"></iframe>
+            <div class="qlp-embed-loading" style="display: none;">
+              <div class="qlp-spinner"></div>
+              <div class="qlp-loading-text">正在加载网页...</div>
+            </div>
+            <div class="qlp-embed-error" style="display: none;">
+              <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+              </svg>
+              <div class="qlp-embed-error-title">无法加载网页</div>
+              <div class="qlp-embed-error-desc">该网站可能禁止了 iframe 嵌入</div>
+              <a class="qlp-embed-open-btn" href="${safeUrl}" target="_blank" rel="noopener noreferrer">在新标签页打开</a>
+            </div>
+          </div>
         </div>
       </div>
     `;
 
     const toggleBtn = container.querySelector('.qlp-embed-toggle');
+    const embedContainer = container.querySelector('.qlp-embed-container');
+    const infoDiv = container.querySelector('.qlp-webpage-info');
+    const iframe = container.querySelector('.qlp-embed-iframe');
+    const iframeWrapper = container.querySelector('.qlp-embed-iframe-wrapper');
+    const embedLoading = container.querySelector('.qlp-embed-loading');
+    const embedError = container.querySelector('.qlp-embed-error');
+    const backBtn = container.querySelector('.qlp-embed-back');
+    const refreshBtn = container.querySelector('.qlp-embed-refresh');
+
+    if (iframeWrapper) {
+      iframeWrapper.addEventListener('wheel', (e) => {
+        e.stopPropagation();
+        const isScrollable = iframeWrapper.scrollHeight > iframeWrapper.clientHeight;
+        if (isScrollable) {
+          const atTop = iframeWrapper.scrollTop === 0;
+          const atBottom = iframeWrapper.scrollTop + iframeWrapper.clientHeight >= iframeWrapper.scrollHeight - 1;
+          
+          if ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)) {
+            e.preventDefault();
+          }
+        }
+      }, { passive: false, capture: true });
+
+      iframeWrapper.addEventListener('scroll', (e) => {
+        e.stopPropagation();
+      }, true);
+    }
+
+    if (embedContainer) {
+      embedContainer.addEventListener('wheel', (e) => {
+        e.stopPropagation();
+      }, { passive: false, capture: true });
+
+      embedContainer.addEventListener('scroll', (e) => {
+        e.stopPropagation();
+      }, true);
+    }
+
+    let loadTimeout = null;
+
+    function showEmbedError() {
+      if (embedLoading) embedLoading.style.display = 'none';
+      if (embedError) embedError.style.display = 'flex';
+      if (iframe) iframe.style.display = 'none';
+    }
+
+    function hideEmbedError() {
+      if (embedLoading) embedLoading.style.display = 'none';
+      if (embedError) embedError.style.display = 'none';
+      if (iframe) iframe.style.display = 'block';
+    }
+
+    if (iframe) {
+      iframe.addEventListener('load', () => {
+        if (loadTimeout) {
+          clearTimeout(loadTimeout);
+          loadTimeout = null;
+        }
+        try {
+          if (iframe.src && iframe.src !== 'about:blank') {
+            setTimeout(() => {
+              try {
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+                if (!iframeDoc || iframeDoc.body.innerHTML === '' || iframeDoc.body.innerHTML === '<html><head></head><body></body></html>') {
+                  showEmbedError();
+                } else {
+                  hideEmbedError();
+                }
+              } catch (e) {
+                hideEmbedError();
+              }
+            }, 1000);
+          }
+        } catch (e) {
+          hideEmbedError();
+        }
+      });
+
+      iframe.addEventListener('error', () => {
+        if (loadTimeout) {
+          clearTimeout(loadTimeout);
+          loadTimeout = null;
+        }
+        showEmbedError();
+      });
+    }
+
+    if (backBtn) {
+      backBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (embedContainer) embedContainer.style.display = 'none';
+        if (infoDiv) infoDiv.style.display = '';
+        if (toggleBtn) toggleBtn.classList.remove('qlp-embed-active');
+        if (iframe) iframe.src = 'about:blank';
+      });
+    }
+
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (iframe) {
+          const src = iframe.getAttribute('data-src');
+          if (embedLoading) embedLoading.style.display = 'flex';
+          if (embedError) embedError.style.display = 'none';
+          iframe.style.display = 'block';
+          iframe.src = 'about:blank';
+          setTimeout(() => {
+            iframe.src = src;
+          }, 50);
+        }
+      });
+    }
+
     if (toggleBtn) {
       toggleBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const embedContainer = container.querySelector('.qlp-embed-container');
-        const infoDiv = container.querySelector('.qlp-webpage-info');
         const isActive = toggleBtn.classList.contains('qlp-embed-active');
         
         if (isActive) {
           toggleBtn.classList.remove('qlp-embed-active');
           embedContainer.style.display = 'none';
           if (infoDiv) infoDiv.style.display = '';
-          const iframe = embedContainer.querySelector('iframe');
           if (iframe) iframe.src = 'about:blank';
         } else {
           toggleBtn.classList.add('qlp-embed-active');
           embedContainer.style.display = 'block';
           if (infoDiv) infoDiv.style.display = 'none';
-          const iframe = embedContainer.querySelector('iframe');
-          if (iframe) iframe.src = url;
+          if (iframe) {
+            const src = iframe.getAttribute('data-src');
+            if (embedLoading) embedLoading.style.display = 'flex';
+            if (embedError) embedError.style.display = 'none';
+            iframe.style.display = 'block';
+            iframe.src = src;
+            
+            if (loadTimeout) clearTimeout(loadTimeout);
+            loadTimeout = setTimeout(() => {
+              if (embedLoading && embedLoading.style.display !== 'none') {
+                showEmbedError();
+              }
+            }, 8000);
+          }
         }
       });
     }
