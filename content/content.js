@@ -22,6 +22,23 @@
       checkSuspicious: true,
       checkRedirect: true
     },
+    positioning: {
+      mode: 'auto',
+      anchorPosition: 'auto',
+      offsetX: 15,
+      offsetY: 10,
+      enableMouseFollow: false,
+      mouseFollowSensitivity: 0.3,
+      smartAnchor: true,
+      fixedPosition: {
+        top: 20,
+        right: 20,
+        bottom: null,
+        left: null
+      },
+      showAnchorIndicator: true,
+      smoothTransition: true
+    },
     batchMode: {
       enabled: true,
       hotkey: 'Shift',
@@ -65,6 +82,12 @@
   let qrcodePanel = null;
   let shortcutHintPanel = null;
   let isFavoriteCurrent = false;
+  let currentMousePos = { x: 0, y: 0 };
+  let currentAnchorPoint = { x: 0, y: 0, direction: 'bottom' };
+  let mouseFollowRAFId = null;
+  let targetPanelPos = { left: 0, top: 0 };
+  let currentPanelPos = { left: 0, top: 0 };
+  let lastMouseMoveEvent = null;
 
   const NO_EMBED_DOMAINS = [
   ];
@@ -578,6 +601,66 @@
       <div class="qlp-preview-header">
         <div class="qlp-preview-title" id="qlp-preview-title">加载中...</div>
         <div class="qlp-preview-actions">
+          <div class="qlp-position-selector" id="qlp-position-selector">
+            <button class="qlp-action-btn qlp-position-btn" id="qlp-position-btn" title="定位模式">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" class="qlp-position-icon">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+              </svg>
+            </button>
+            <div class="qlp-position-dropdown" id="qlp-position-dropdown">
+              <div class="qlp-position-section">
+                <div class="qlp-position-section-title">定位模式</div>
+                <div class="qlp-position-options">
+                  <button class="qlp-position-option" data-mode="auto" title="根据链接位置自动选择最优锚点">
+                    <span class="qlp-option-icon">🎯</span>
+                    <span class="qlp-option-label">智能定位</span>
+                  </button>
+                  <button class="qlp-position-option" data-mode="mouse" title="预览面板跟随鼠标移动">
+                    <span class="qlp-option-icon">🖱️</span>
+                    <span class="qlp-option-label">跟随鼠标</span>
+                  </button>
+                  <button class="qlp-position-option" data-mode="anchor" title="固定在链接的指定方向">
+                    <span class="qlp-option-icon">📌</span>
+                    <span class="qlp-option-label">锚点定位</span>
+                  </button>
+                  <button class="qlp-position-option" data-mode="fixed" title="固定在屏幕的固定位置">
+                    <span class="qlp-option-icon">🔲</span>
+                    <span class="qlp-option-label">固定位置</span>
+                  </button>
+                </div>
+              </div>
+              <div class="qlp-position-section" id="qlp-anchor-section" style="display:none;">
+                <div class="qlp-position-section-title">锚点方向</div>
+                <div class="qlp-anchor-directions">
+                  <button class="qlp-anchor-dir" data-dir="top" title="上方">↑</button>
+                  <div class="qlp-anchor-row">
+                    <button class="qlp-anchor-dir" data-dir="left" title="左侧">←</button>
+                    <button class="qlp-anchor-dir qlp-anchor-center" data-dir="auto" title="自动选择">◎</button>
+                    <button class="qlp-anchor-dir" data-dir="right" title="右侧">→</button>
+                  </div>
+                  <button class="qlp-anchor-dir" data-dir="bottom" title="下方">↓</button>
+                </div>
+              </div>
+              <div class="qlp-position-section">
+                <div class="qlp-position-section-title">显示选项</div>
+                <label class="qlp-toggle-item">
+                  <input type="checkbox" id="qlp-toggle-mouse-follow">
+                  <span class="qlp-toggle-slider"></span>
+                  <span class="qlp-toggle-label">鼠标跟随微调</span>
+                </label>
+                <label class="qlp-toggle-item">
+                  <input type="checkbox" id="qlp-toggle-anchor-indicator" checked>
+                  <span class="qlp-toggle-slider"></span>
+                  <span class="qlp-toggle-label">显示锚点指示器</span>
+                </label>
+                <label class="qlp-toggle-item">
+                  <input type="checkbox" id="qlp-toggle-smooth-transition" checked>
+                  <span class="qlp-toggle-slider"></span>
+                  <span class="qlp-toggle-label">平滑过渡动画</span>
+                </label>
+              </div>
+            </div>
+          </div>
           <button class="qlp-action-btn" id="qlp-favorite-btn" title="收藏 (2)">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" class="qlp-favorite-icon">
               <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
@@ -640,6 +723,79 @@
     panel.querySelector('#qlp-qrcode-btn').addEventListener('click', (e) => {
       e.stopPropagation();
       toggleQrcodePanel();
+    });
+
+    panel.querySelector('#qlp-position-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const dropdown = panel.querySelector('#qlp-position-dropdown');
+      dropdown.classList.toggle('qlp-visible');
+      updatePositionDropdownState(panel);
+    });
+
+    panel.querySelectorAll('.qlp-position-option').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const mode = btn.dataset.mode;
+        settings.positioning.mode = mode;
+        savePositionSettings();
+
+        const anchorSection = panel.querySelector('#qlp-anchor-section');
+        anchorSection.style.display = mode === 'anchor' ? 'block' : 'none';
+
+        updatePositionDropdownState(panel);
+
+        if (lastMouseMoveEvent && previewPanel) {
+          positionPreviewPanel(lastMouseMoveEvent, previewPanel);
+        }
+
+        showToast(`已切换到${getPositionModeLabel(mode)}模式`);
+      });
+    });
+
+    panel.querySelectorAll('.qlp-anchor-dir').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const dir = btn.dataset.dir;
+        settings.positioning.anchorPosition = dir;
+        savePositionSettings();
+        updatePositionDropdownState(panel);
+
+        if (lastMouseMoveEvent && previewPanel) {
+          positionPreviewPanel(lastMouseMoveEvent, previewPanel);
+        }
+
+        showToast(`锚点方向：${getAnchorDirectionLabel(dir)}`);
+      });
+    });
+
+    panel.querySelector('#qlp-toggle-mouse-follow').addEventListener('change', (e) => {
+      e.stopPropagation();
+      settings.positioning.enableMouseFollow = e.target.checked;
+      savePositionSettings();
+    });
+
+    panel.querySelector('#qlp-toggle-anchor-indicator').addEventListener('change', (e) => {
+      e.stopPropagation();
+      settings.positioning.showAnchorIndicator = e.target.checked;
+      savePositionSettings();
+      const indicator = panel.querySelector('.qlp-anchor-indicator');
+      if (indicator) {
+        indicator.style.display = e.target.checked ? '' : 'none';
+      }
+    });
+
+    panel.querySelector('#qlp-toggle-smooth-transition').addEventListener('change', (e) => {
+      e.stopPropagation();
+      settings.positioning.smoothTransition = e.target.checked;
+      savePositionSettings();
+    });
+
+    document.addEventListener('click', (e) => {
+      const dropdown = panel.querySelector('#qlp-position-dropdown');
+      const selector = panel.querySelector('#qlp-position-selector');
+      if (dropdown && selector && !selector.contains(e.target)) {
+        dropdown.classList.remove('qlp-visible');
+      }
     });
 
     panel.addEventListener('mouseenter', () => {
@@ -814,45 +970,382 @@
     loadPreviewContent(absoluteUrl, linkType, content, secInfo, ruleActions);
   }
 
-  function positionPreviewPanel(event, panel, width = null, height = null) {
-    let triggerX, triggerY, triggerBottom;
+  function getTriggerPosition(event) {
+    let triggerX, triggerY, triggerRect;
 
     if (event && event.target && event.target.getBoundingClientRect) {
-      const rect = event.target.getBoundingClientRect();
-      triggerX = rect.left;
-      triggerY = rect.top;
-      triggerBottom = rect.bottom;
+      triggerRect = event.target.getBoundingClientRect();
+      triggerX = triggerRect.left + triggerRect.width / 2;
+      triggerY = triggerRect.top + triggerRect.height / 2;
     } else if (event && typeof event.clientX === 'number') {
       triggerX = event.clientX;
       triggerY = event.clientY;
-      triggerBottom = event.clientY + 20;
+      triggerRect = { left: event.clientX, top: event.clientY, right: event.clientX, bottom: event.clientY, width: 0, height: 0 };
     } else {
       triggerX = window.innerWidth / 2;
       triggerY = window.innerHeight / 2;
-      triggerBottom = triggerY + 20;
+      triggerRect = { left: triggerX - 50, top: triggerY - 20, right: triggerX + 50, bottom: triggerY + 20, width: 100, height: 40 };
     }
 
+    return { x: triggerX, y: triggerY, rect: triggerRect };
+  }
+
+  function selectOptimalAnchor(triggerRect, panelWidth, panelHeight) {
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
+    const margin = 10;
+    const offsetX = settings.positioning.offsetX;
+    const offsetY = settings.positioning.offsetY;
+
+    const directions = [
+      { name: 'bottom', score: 0, left: 0, top: 0, anchorX: 0, anchorY: 0 },
+      { name: 'top', score: 0, left: 0, top: 0, anchorX: 0, anchorY: 0 },
+      { name: 'right', score: 0, left: 0, top: 0, anchorX: 0, anchorY: 0 },
+      { name: 'left', score: 0, left: 0, top: 0, anchorX: 0, anchorY: 0 }
+    ];
+
+    const triggerCenterX = triggerRect.left + triggerRect.width / 2;
+    const triggerCenterY = triggerRect.top + triggerRect.height / 2;
+
+    directions.forEach(dir => {
+      let left, top, anchorX, anchorY;
+
+      switch (dir.name) {
+        case 'bottom':
+          left = triggerRect.left + offsetX;
+          top = triggerRect.bottom + offsetY;
+          anchorX = triggerCenterX;
+          anchorY = triggerRect.bottom;
+          if (left + panelWidth > viewportWidth - margin) left = viewportWidth - panelWidth - margin;
+          if (left < margin) left = margin;
+          if (top + panelHeight > viewportHeight - margin) dir.score -= 50;
+          dir.score += Math.max(0, viewportHeight - triggerRect.bottom);
+          break;
+        case 'top':
+          left = triggerRect.left + offsetX;
+          top = triggerRect.top - panelHeight - offsetY;
+          anchorX = triggerCenterX;
+          anchorY = triggerRect.top;
+          if (left + panelWidth > viewportWidth - margin) left = viewportWidth - panelWidth - margin;
+          if (left < margin) left = margin;
+          if (top < margin) dir.score -= 50;
+          dir.score += Math.max(0, triggerRect.top);
+          break;
+        case 'right':
+          left = triggerRect.right + offsetX;
+          top = triggerRect.top;
+          anchorX = triggerRect.right;
+          anchorY = triggerCenterY;
+          if (left + panelWidth > viewportWidth - margin) dir.score -= 50;
+          if (top + panelHeight > viewportHeight - margin) top = viewportHeight - panelHeight - margin;
+          if (top < margin) top = margin;
+          dir.score += Math.max(0, viewportWidth - triggerRect.right);
+          break;
+        case 'left':
+          left = triggerRect.left - panelWidth - offsetX;
+          top = triggerRect.top;
+          anchorX = triggerRect.left;
+          anchorY = triggerCenterY;
+          if (left < margin) dir.score -= 50;
+          if (top + panelHeight > viewportHeight - margin) top = viewportHeight - panelHeight - margin;
+          if (top < margin) top = margin;
+          dir.score += Math.max(0, triggerRect.left);
+          break;
+      }
+
+      dir.left = left;
+      dir.top = top;
+      dir.anchorX = anchorX;
+      dir.anchorY = anchorY;
+
+      if (dir.name === 'bottom' || dir.name === 'top') {
+        dir.score += 20;
+      }
+    });
+
+    directions.sort((a, b) => b.score - a.score);
+
+    return {
+      direction: directions[0].name,
+      left: directions[0].left,
+      top: directions[0].top,
+      anchorX: directions[0].anchorX,
+      anchorY: directions[0].anchorY
+    };
+  }
+
+  function calculateAnchorPosition(anchorDirection, triggerRect, panelWidth, panelHeight) {
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const margin = 10;
+    const offsetX = settings.positioning.offsetX;
+    const offsetY = settings.positioning.offsetY;
+
+    const triggerCenterX = triggerRect.left + triggerRect.width / 2;
+    const triggerCenterY = triggerRect.top + triggerRect.height / 2;
+
+    let left, top, anchorX, anchorY;
+
+    switch (anchorDirection) {
+      case 'top':
+        left = triggerCenterX - panelWidth / 2;
+        top = triggerRect.top - panelHeight - offsetY;
+        anchorX = triggerCenterX;
+        anchorY = triggerRect.top;
+        if (left < margin) left = margin;
+        if (left + panelWidth > viewportWidth - margin) left = viewportWidth - panelWidth - margin;
+        if (top < margin) {
+          top = triggerRect.bottom + offsetY;
+          anchorDirection = 'bottom';
+        }
+        break;
+      case 'bottom':
+        left = triggerCenterX - panelWidth / 2;
+        top = triggerRect.bottom + offsetY;
+        anchorX = triggerCenterX;
+        anchorY = triggerRect.bottom;
+        if (left < margin) left = margin;
+        if (left + panelWidth > viewportWidth - margin) left = viewportWidth - panelWidth - margin;
+        if (top + panelHeight > viewportHeight - margin) {
+          top = triggerRect.top - panelHeight - offsetY;
+          anchorDirection = 'top';
+        }
+        break;
+      case 'left':
+        left = triggerRect.left - panelWidth - offsetX;
+        top = triggerCenterY - panelHeight / 2;
+        anchorX = triggerRect.left;
+        anchorY = triggerCenterY;
+        if (top < margin) top = margin;
+        if (top + panelHeight > viewportHeight - margin) top = viewportHeight - panelHeight - margin;
+        if (left < margin) {
+          left = triggerRect.right + offsetX;
+          anchorDirection = 'right';
+        }
+        break;
+      case 'right':
+        left = triggerRect.right + offsetX;
+        top = triggerCenterY - panelHeight / 2;
+        anchorX = triggerRect.right;
+        anchorY = triggerCenterY;
+        if (top < margin) top = margin;
+        if (top + panelHeight > viewportHeight - margin) top = viewportHeight - panelHeight - margin;
+        if (left + panelWidth > viewportWidth - margin) {
+          left = triggerRect.left - panelWidth - offsetX;
+          anchorDirection = 'left';
+        }
+        break;
+      default:
+        return selectOptimalAnchor(triggerRect, panelWidth, panelHeight);
+    }
+
+    return { direction: anchorDirection, left, top, anchorX, anchorY };
+  }
+
+  function calculateFixedPosition(panelWidth, panelHeight) {
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const margin = 10;
+    const fixed = settings.positioning.fixedPosition;
+
+    let left = margin;
+    let top = margin;
+
+    if (fixed.left !== null) {
+      left = fixed.left;
+    } else if (fixed.right !== null) {
+      left = viewportWidth - panelWidth - fixed.right;
+    }
+
+    if (fixed.top !== null) {
+      top = fixed.top;
+    } else if (fixed.bottom !== null) {
+      top = viewportHeight - panelHeight - fixed.bottom;
+    }
+
+    if (left + panelWidth > viewportWidth - margin) left = viewportWidth - panelWidth - margin;
+    if (left < margin) left = margin;
+    if (top + panelHeight > viewportHeight - margin) top = viewportHeight - panelHeight - margin;
+    if (top < margin) top = margin;
+
+    return { left, top, direction: 'fixed' };
+  }
+
+  function calculateMouseFollowPosition(event, panelWidth, panelHeight, triggerRect) {
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const margin = 10;
+    const offsetX = settings.positioning.offsetX;
+    const offsetY = settings.positioning.offsetY;
+
+    const mouseX = event ? event.clientX : currentMousePos.x;
+    const mouseY = event ? event.clientY : currentMousePos.y;
+
+    let left = mouseX + offsetX;
+    let top = mouseY + offsetY;
+    let anchorX = mouseX;
+    let anchorY = mouseY;
+    let direction = 'bottom-right';
+
+    if (left + panelWidth > viewportWidth - margin) {
+      left = mouseX - panelWidth - offsetX;
+      direction = 'bottom-left';
+    }
+    if (top + panelHeight > viewportHeight - margin) {
+      top = mouseY - panelHeight - offsetY;
+      direction = direction.includes('left') ? 'top-left' : 'top-right';
+    }
+    if (left < margin) left = margin;
+    if (top < margin) top = margin;
+
+    return { left, top, anchorX, anchorY, direction };
+  }
+
+  function updateAnchorIndicator(panel, anchorX, anchorY, direction) {
+    if (!settings.positioning.showAnchorIndicator) return;
+
+    let indicator = panel.querySelector('.qlp-anchor-indicator');
+    if (!indicator) {
+      indicator = document.createElement('div');
+      indicator.className = 'qlp-anchor-indicator';
+      panel.appendChild(indicator);
+    }
+
+    const panelRect = panel.getBoundingClientRect();
+    const relativeX = anchorX - panelRect.left;
+    const relativeY = anchorY - panelRect.top;
+
+    indicator.style.setProperty('--anchor-x', relativeX + 'px');
+    indicator.style.setProperty('--anchor-y', relativeY + 'px');
+    indicator.setAttribute('data-direction', direction);
+  }
+
+  function startMouseFollowAnimation(panel) {
+    if (mouseFollowRAFId) {
+      cancelAnimationFrame(mouseFollowRAFId);
+    }
+
+    function animate() {
+      if (!previewPanel || !previewPanel.classList.contains('qlp-visible')) {
+        mouseFollowRAFId = null;
+        return;
+      }
+
+      const smoothing = settings.positioning.mouseFollowSensitivity;
+      currentPanelPos.left += (targetPanelPos.left - currentPanelPos.left) * smoothing;
+      currentPanelPos.top += (targetPanelPos.top - currentPanelPos.top) * smoothing;
+
+      const dx = Math.abs(targetPanelPos.left - currentPanelPos.left);
+      const dy = Math.abs(targetPanelPos.top - currentPanelPos.top);
+
+      if (dx > 0.5 || dy > 0.5) {
+        panel.style.left = currentPanelPos.left + 'px';
+        panel.style.top = currentPanelPos.top + 'px';
+        mouseFollowRAFId = requestAnimationFrame(animate);
+      } else {
+        panel.style.left = targetPanelPos.left + 'px';
+        panel.style.top = targetPanelPos.top + 'px';
+        mouseFollowRAFId = null;
+      }
+    }
+
+    mouseFollowRAFId = requestAnimationFrame(animate);
+  }
+
+  function positionPreviewPanel(event, panel, width = null, height = null) {
     const panelWidth = width || settings.previewWidth;
     const panelHeight = (height || settings.previewHeight) + 60;
+    const posSettings = settings.positioning;
+    const trigger = getTriggerPosition(event);
 
-    let left = triggerX + 15;
-    let top = triggerBottom + 10;
+    let result;
+    const mode = posSettings.mode;
 
-    if (left + panelWidth > viewportWidth - 10) {
-      left = viewportWidth - panelWidth - 10;
+    if (mode === 'fixed') {
+      result = calculateFixedPosition(panelWidth, panelHeight);
+    } else if (mode === 'mouse') {
+      result = calculateMouseFollowPosition(event, panelWidth, panelHeight, trigger.rect);
+    } else if (mode === 'anchor' && posSettings.anchorPosition !== 'auto') {
+      result = calculateAnchorPosition(posSettings.anchorPosition, trigger.rect, panelWidth, panelHeight);
+    } else {
+      result = selectOptimalAnchor(trigger.rect, panelWidth, panelHeight);
     }
-    if (left < 10) left = 10;
 
-    if (top + panelHeight > viewportHeight - 10) {
-      top = triggerY - panelHeight - 10;
-    }
-    if (top < 10) top = 10;
+    currentAnchorPoint = {
+      x: result.anchorX || trigger.x,
+      y: result.anchorY || trigger.y,
+      direction: result.direction
+    };
+
+    targetPanelPos.left = result.left;
+    targetPanelPos.top = result.top;
 
     panel.style.width = panelWidth + 'px';
-    panel.style.left = left + 'px';
-    panel.style.top = top + 'px';
+
+    if (posSettings.smoothTransition && (mode === 'mouse' || posSettings.enableMouseFollow)) {
+      currentPanelPos.left = parseFloat(panel.style.left) || result.left;
+      currentPanelPos.top = parseFloat(panel.style.top) || result.top;
+      startMouseFollowAnimation(panel);
+    } else {
+      panel.style.left = result.left + 'px';
+      panel.style.top = result.top + 'px';
+    }
+
+    panel.setAttribute('data-position-mode', mode);
+    panel.setAttribute('data-anchor-direction', result.direction);
+
+    if (posSettings.showAnchorIndicator && result.direction !== 'fixed') {
+      setTimeout(() => {
+        updateAnchorIndicator(panel, currentAnchorPoint.x, currentAnchorPoint.y, result.direction);
+      }, 50);
+    }
+  }
+
+  function savePositionSettings() {
+    chrome.storage.sync.set({
+      positioning: settings.positioning
+    });
+  }
+
+  function getPositionModeLabel(mode) {
+    const labels = {
+      'auto': '智能定位',
+      'mouse': '跟随鼠标',
+      'anchor': '锚点定位',
+      'fixed': '固定位置'
+    };
+    return labels[mode] || mode;
+  }
+
+  function getAnchorDirectionLabel(dir) {
+    const labels = {
+      'auto': '自动选择',
+      'top': '上方',
+      'bottom': '下方',
+      'left': '左侧',
+      'right': '右侧'
+    };
+    return labels[dir] || dir;
+  }
+
+  function updatePositionDropdownState(panel) {
+    const currentMode = settings.positioning.mode;
+    const currentAnchor = settings.positioning.anchorPosition;
+
+    panel.querySelectorAll('.qlp-position-option').forEach(btn => {
+      btn.classList.toggle('qlp-active', btn.dataset.mode === currentMode);
+    });
+
+    panel.querySelectorAll('.qlp-anchor-dir').forEach(btn => {
+      btn.classList.toggle('qlp-active', btn.dataset.dir === currentAnchor);
+    });
+
+    const anchorSection = panel.querySelector('#qlp-anchor-section');
+    anchorSection.style.display = currentMode === 'anchor' ? 'block' : 'none';
+
+    panel.querySelector('#qlp-toggle-mouse-follow').checked = settings.positioning.enableMouseFollow;
+    panel.querySelector('#qlp-toggle-anchor-indicator').checked = settings.positioning.showAnchorIndicator;
+    panel.querySelector('#qlp-toggle-smooth-transition').checked = settings.positioning.smoothTransition;
   }
 
   function scheduleHide() {
@@ -3150,6 +3643,40 @@
     }, 1500);
   }
 
+  function handleMouseMove(event) {
+    currentMousePos.x = event.clientX;
+    currentMousePos.y = event.clientY;
+    lastMouseMoveEvent = event;
+
+    if (settings.positioning.enableMouseFollow && previewPanel && previewPanel.classList.contains('qlp-visible') && !isPanelHovered) {
+      const mode = settings.positioning.mode;
+      if (mode === 'mouse' || mode === 'auto') {
+        const panelWidth = settings.previewWidth;
+        const panelHeight = settings.previewHeight + 60;
+        const trigger = getTriggerPosition(event);
+        const result = calculateMouseFollowPosition(event, panelWidth, panelHeight, trigger.rect);
+
+        targetPanelPos.left = result.left;
+        targetPanelPos.top = result.top;
+
+        currentAnchorPoint.x = result.anchorX;
+        currentAnchorPoint.y = result.anchorY;
+        currentAnchorPoint.direction = result.direction;
+
+        if (settings.positioning.smoothTransition) {
+          startMouseFollowAnimation(previewPanel);
+        } else {
+          previewPanel.style.left = result.left + 'px';
+          previewPanel.style.top = result.top + 'px';
+        }
+
+        if (settings.positioning.showAnchorIndicator) {
+          updateAnchorIndicator(previewPanel, result.anchorX, result.anchorY, result.direction);
+        }
+      }
+    }
+  }
+
   function init() {
     loadSettings();
 
@@ -3159,6 +3686,7 @@
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('keyup', handleKeyUp);
     document.addEventListener('click', handleDocClick);
+    document.addEventListener('mousemove', handleMouseMove, true);
     window.addEventListener('scroll', handleScroll, true);
 
     const observer = new MutationObserver(() => {

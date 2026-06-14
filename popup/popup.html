@@ -135,10 +135,91 @@
         <p class="section-desc">在这些网站上不显示预览（每行一个域名）</p>
         <textarea id="blacklist" placeholder="例如：&#10;example.com&#10;google.com"></textarea>
       </div>
+
+      <div class="section">
+        <h2>定位策略</h2>
+        <p class="section-desc">配置预览面板的显示位置和行为</p>
+        
+        <div class="select-container">
+          <label for="positioning_mode">定位模式</label>
+          <select id="positioning_mode">
+            <option value="auto">🎯 智能定位（自动选择最优锚点）</option>
+            <option value="mouse">🖱️ 跟随鼠标（随鼠标移动）</option>
+            <option value="anchor">📌 锚点定位（固定方向显示）</option>
+            <option value="fixed">🔲 固定位置（固定在屏幕角落）</option>
+          </select>
+        </div>
+
+        <div class="select-container" id="anchor-position-section" style="display:none; margin-top: 12px;">
+          <label for="positioning_anchorPosition">锚点方向</label>
+          <select id="positioning_anchorPosition">
+            <option value="auto">自动选择</option>
+            <option value="top">上方</option>
+            <option value="bottom">下方</option>
+            <option value="left">左侧</option>
+            <option value="right">右侧</option>
+          </select>
+        </div>
+
+        <div class="size-inputs" style="margin-top: 12px;">
+          <div class="size-input">
+            <label for="positioning_offsetX">水平偏移</label>
+            <input type="number" id="positioning_offsetX" min="0" max="100" value="15">
+            <span class="unit">px</span>
+          </div>
+          <div class="size-input">
+            <label for="positioning_offsetY">垂直偏移</label>
+            <input type="number" id="positioning_offsetY" min="0" max="100" value="10">
+            <span class="unit">px</span>
+          </div>
+        </div>
+
+        <div class="toggle-group" style="margin-top: 12px;">
+          <label class="toggle-item">
+            <input type="checkbox" id="positioning_enableMouseFollow">
+            <span class="toggle-slider"></span>
+            <span class="toggle-label">
+              <span class="toggle-title">鼠标跟随微调</span>
+              <span class="toggle-desc">预览面板随鼠标微移动</span>
+            </span>
+          </label>
+          <label class="toggle-item">
+            <input type="checkbox" id="positioning_smartAnchor" checked>
+            <span class="toggle-slider"></span>
+            <span class="toggle-label">
+              <span class="toggle-title">智能锚点选择</span>
+              <span class="toggle-desc">根据视口空间自动选择最佳方向</span>
+            </span>
+          </label>
+          <label class="toggle-item">
+            <input type="checkbox" id="positioning_showAnchorIndicator" checked>
+            <span class="toggle-slider"></span>
+            <span class="toggle-label">
+              <span class="toggle-title">显示锚点指示器</span>
+              <span class="toggle-desc">显示指向链接的小箭头</span>
+            </span>
+          </label>
+          <label class="toggle-item">
+            <input type="checkbox" id="positioning_smoothTransition" checked>
+            <span class="toggle-slider"></span>
+            <span class="toggle-label">
+              <span class="toggle-title">平滑过渡动画</span>
+              <span class="toggle-desc">位置变化时使用平滑动画</span>
+            </span>
+          </label>
+        </div>
+
+        <div class="slider-container" style="margin-top: 12px;">
+          <label for="positioning_mouseFollowSensitivity">跟随灵敏度</label>
+          <input type="range" id="positioning_mouseFollowSensitivity" min="0.1" max="1.0" step="0.1" value="0.3">
+          <span class="slider-value"><span id="positioning_mouseFollowSensitivityValue">0.3</span></span>
+        </div>
+      </div>
       </div>
 
       <div class="popup-footer" id="settings-footer">
         <button class="btn-primary" id="saveBtn">保存设置</button>
+        <button class="btn-secondary" id="savePositioningBtn">仅保存定位</button>
       </div>
     </div>
 

@@ -15,6 +15,23 @@ const DEFAULT_SETTINGS = {
     checkSuspicious: true,
     checkRedirect: true
   },
+  positioning: {
+    mode: 'auto',
+    anchorPosition: 'auto',
+    offsetX: 15,
+    offsetY: 10,
+    enableMouseFollow: false,
+    mouseFollowSensitivity: 0.3,
+    smartAnchor: true,
+    fixedPosition: {
+      top: 20,
+      right: 20,
+      bottom: null,
+      left: null
+    },
+    showAnchorIndicator: true,
+    smoothTransition: true
+  },
   batchMode: {
     enabled: true,
     hotkey: 'Shift',
@@ -354,10 +371,37 @@ function loadSettings() {
     
     updateHoverDelaySection(result.triggerMode);
 
+    loadPositioningSettings(result.positioning);
     loadBatchSettings(result.batchMode);
     loadThemeSettings(result.theme);
     loadSecuritySettings(result);
   });
+}
+
+function loadPositioningSettings(positioning) {
+  document.getElementById('positioning_mode').value = positioning.mode;
+  document.getElementById('positioning_anchorPosition').value = positioning.anchorPosition;
+  document.getElementById('positioning_offsetX').value = positioning.offsetX;
+  document.getElementById('positioning_offsetY').value = positioning.offsetY;
+  document.getElementById('positioning_enableMouseFollow').checked = positioning.enableMouseFollow;
+  
+  const sensitivitySlider = document.getElementById('positioning_mouseFollowSensitivity');
+  const sensitivityValue = document.getElementById('positioning_mouseFollowSensitivityValue');
+  sensitivitySlider.value = positioning.mouseFollowSensitivity;
+  sensitivityValue.textContent = positioning.mouseFollowSensitivity.toFixed(1);
+  
+  document.getElementById('positioning_showAnchorIndicator').checked = positioning.showAnchorIndicator;
+  document.getElementById('positioning_smoothTransition').checked = positioning.smoothTransition;
+  document.getElementById('positioning_smartAnchor').checked = positioning.smartAnchor;
+
+  updateAnchorSection(positioning.mode);
+}
+
+function updateAnchorSection(mode) {
+  const anchorSection = document.getElementById('anchor-position-section');
+  if (anchorSection) {
+    anchorSection.style.display = mode === 'anchor' ? 'block' : 'none';
+  }
 }
 
 function loadBatchSettings(batchMode) {
@@ -419,6 +463,19 @@ function saveSettings() {
       .map(line => line.trim())
       .filter(line => line.length > 0);
     
+    const positioning = {
+      ...result.positioning,
+      mode: document.getElementById('positioning_mode').value,
+      anchorPosition: document.getElementById('positioning_anchorPosition').value,
+      offsetX: parseInt(document.getElementById('positioning_offsetX').value, 10),
+      offsetY: parseInt(document.getElementById('positioning_offsetY').value, 10),
+      enableMouseFollow: document.getElementById('positioning_enableMouseFollow').checked,
+      mouseFollowSensitivity: parseFloat(document.getElementById('positioning_mouseFollowSensitivity').value),
+      showAnchorIndicator: document.getElementById('positioning_showAnchorIndicator').checked,
+      smoothTransition: document.getElementById('positioning_smoothTransition').checked,
+      smartAnchor: document.getElementById('positioning_smartAnchor').checked
+    };
+
     const newSettings = {
       ...result,
       triggerMode: triggerMode,
@@ -429,11 +486,33 @@ function saveSettings() {
       enableVideoPreview: document.getElementById('enableVideoPreview').checked,
       enableAudioPreview: document.getElementById('enableAudioPreview').checked,
       enableWebpagePreview: document.getElementById('enableWebpagePreview').checked,
-      blacklist: blacklist
+      blacklist: blacklist,
+      positioning: positioning
     };
     
     chrome.storage.sync.set(newSettings, () => {
       showToast('设置已保存');
+    });
+  });
+}
+
+function savePositioningSettings() {
+  chrome.storage.sync.get(DEFAULT_SETTINGS, (result) => {
+    const positioning = {
+      ...result.positioning,
+      mode: document.getElementById('positioning_mode').value,
+      anchorPosition: document.getElementById('positioning_anchorPosition').value,
+      offsetX: parseInt(document.getElementById('positioning_offsetX').value, 10),
+      offsetY: parseInt(document.getElementById('positioning_offsetY').value, 10),
+      enableMouseFollow: document.getElementById('positioning_enableMouseFollow').checked,
+      mouseFollowSensitivity: parseFloat(document.getElementById('positioning_mouseFollowSensitivity').value),
+      showAnchorIndicator: document.getElementById('positioning_showAnchorIndicator').checked,
+      smoothTransition: document.getElementById('positioning_smoothTransition').checked,
+      smartAnchor: document.getElementById('positioning_smartAnchor').checked
+    };
+
+    chrome.storage.sync.set({ ...result, positioning }, () => {
+      showToast('定位设置已保存');
     });
   });
 }
@@ -850,6 +929,22 @@ function init() {
   document.getElementById('saveThemeBtn').addEventListener('click', saveThemeSettings);
   document.getElementById('resetThemeBtn').addEventListener('click', resetThemeSettings);
   document.getElementById('saveSecurityBtn').addEventListener('click', saveSecuritySettings);
+  document.getElementById('savePositioningBtn').addEventListener('click', savePositioningSettings);
+
+  const positioningMode = document.getElementById('positioning_mode');
+  if (positioningMode) {
+    positioningMode.addEventListener('change', (e) => {
+      updateAnchorSection(e.target.value);
+    });
+  }
+
+  const sensitivitySlider = document.getElementById('positioning_mouseFollowSensitivity');
+  const sensitivityValue = document.getElementById('positioning_mouseFollowSensitivityValue');
+  if (sensitivitySlider && sensitivityValue) {
+    sensitivitySlider.addEventListener('input', (e) => {
+      sensitivityValue.textContent = parseFloat(e.target.value).toFixed(1);
+    });
+  }
 
   const primaryColor = document.getElementById('theme_primaryColor');
   const primaryColorText = document.getElementById('theme_primaryColorText');
