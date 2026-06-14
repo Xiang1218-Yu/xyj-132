@@ -551,21 +551,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'getFavoriteCategories') {
     getFavoriteCategories((categories) => {
-      sendResponse({ success: true, data: categories });
+      sendResponse({ success: true, categories: categories });
     });
     return true;
   }
 
   if (request.action === 'addFavoriteCategory') {
     addFavoriteCategory(request.name, request.color, (category) => {
-      sendResponse({ success: true, data: category });
+      sendResponse({ success: true, category: category });
     });
     return true;
   }
 
   if (request.action === 'updateFavoriteCategory') {
     updateFavoriteCategory(request.categoryId, request.updates, (category) => {
-      sendResponse({ success: !!category, data: category });
+      sendResponse({ success: !!category, category: category });
     });
     return true;
   }
@@ -579,14 +579,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'getFavorites') {
     getFavorites((favorites) => {
-      sendResponse({ success: true, data: favorites });
+      sendResponse({ success: true, favorites: favorites });
     });
     return true;
   }
 
   if (request.action === 'getFavoritesByCategory') {
     getFavoritesByCategory(request.categoryId, (favorites) => {
-      sendResponse({ success: true, data: favorites });
+      sendResponse({ success: true, favorites: favorites });
     });
     return true;
   }
@@ -614,14 +614,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'isFavorite') {
     isFavorite(request.url, (exists) => {
-      sendResponse({ success: true, data: exists });
+      sendResponse({ success: true, isFavorite: exists });
     });
     return true;
   }
 
   if (request.action === 'searchFavorites') {
     searchFavorites(request.query, (favorites) => {
-      sendResponse({ success: true, data: favorites });
+      sendResponse({ success: true, favorites: favorites });
     });
     return true;
   }
