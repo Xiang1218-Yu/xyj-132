@@ -269,7 +269,127 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     return true;
   }
+
+  if (request.action === 'fetchPageSnapshot') {
+    fetchPageSnapshot(request.url)
+      .then(data => {
+        sendResponse({ success: true, data: data });
+      })
+      .catch(error => {
+        sendResponse({ success: false, error: error.message });
+      });
+    return true;
+  }
 });
+
+async function fetchPageSnapshot(url) {
+  const cacheKey = 'snapshot:' + url;
+  const cached = getFromCache(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: {
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      },
+      credentials: 'omit'
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) {
+      throw new Error('Not HTML content');
+    }
+
+    const html = await response.text();
+    const processedHtml = processHtmlForSnapshot(html, url);
+    const metaInfo = extractMetaTags(html, url);
+
+    const result = {
+      html: processedHtml,
+      meta: metaInfo,
+      originalUrl: url
+    };
+
+    setToCache(cacheKey, result);
+    return result;
+  } catch (error) {
+    console.warn('Failed to fetch page snapshot:', url, error.message);
+    throw error;
+  }
+}
+
+function processHtmlForSnapshot(html, baseUrl) {
+  try {
+    const baseTagMatch = html.match(/<base[^>]*href=["']([^"']*)["']/i);
+    const effectiveBase = baseTagMatch ? resolveUrl(baseUrl, baseTagMatch[1]) : baseUrl;
+
+    let processed = html;
+
+    processed = processed.replace(/<script[\s\S]*?<\/script>/gi, '');
+    processed = processed.replace(/<noscript[\s\S]*?<\/noscript>/gi, '');
+    processed = processed.replace(/on\w+\s*=\s*["'][^"']*["']/gi, '');
+    processed = processed.replace(/on\w+\s*=\s*[^>\s]+/gi, '');
+
+    processed = processed.replace(/(<[^>]*\s(?:href|src|srcset|poster|data-src|data-href)\s*=\s*["'])([^"']*)(["'])/gi, (match, prefix, url, suffix) => {
+      try {
+        const resolved = resolveUrl(effectiveBase, url);
+        return prefix + resolved + suffix;
+      } catch (e) {
+        return match;
+      }
+    });
+
+    processed = processed.replace(/(<[^>]*\s(?:href|src|srcset|poster|data-src|data-href)\s*=\s*)([^"'\s>]+)([\s>])/gi, (match, prefix, url, suffix) => {
+      try {
+        const resolved = resolveUrl(effectiveBase, url);
+        return prefix + '"' + resolved + '"' + suffix;
+      } catch (e) {
+        return match;
+      }
+    });
+
+    processed = processed.replace(/srcset\s*=\s*["']([^"']*)["']/gi, (match, srcsetContent) => {
+      const newSrcset = srcsetContent.split(',').map(item => {
+        const parts = item.trim().split(/\s+/);
+        if (parts.length > 0) {
+          try {
+            parts[0] = resolveUrl(effectiveBase, parts[0]);
+          } catch (e) {
+          }
+        }
+        return parts.join(' ');
+      }).join(', ');
+      return 'srcset="' + newSrcset + '"';
+    });
+
+    if (!/<base\s/i.test(processed)) {
+      processed = processed.replace(/<head[^>]*>/i, match => match + `<base href="${effectiveBase}">`);
+    }
+
+    processed = processed.replace(/<form[^>]*>/gi, '<form onsubmit="return false;">');
+
+    return processed;
+  } catch (e) {
+    console.warn('Error processing HTML for snapshot:', e);
+    return html;
+  }
+}
 
 chrome.runtime.onInstalled.addListener(() => {
   const defaultSettings = {
