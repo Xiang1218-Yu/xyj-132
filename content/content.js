@@ -175,6 +175,52 @@
       e.stopPropagation();
     });
 
+    panel.addEventListener('wheel', (e) => {
+      e.stopPropagation();
+      const contentArea = panel.querySelector('#qlp-preview-content');
+      if (contentArea) {
+        const isScrollable = contentArea.scrollHeight > contentArea.clientHeight;
+        if (isScrollable) {
+          const atTop = contentArea.scrollTop === 0;
+          const atBottom = contentArea.scrollTop + contentArea.clientHeight >= contentArea.scrollHeight - 1;
+          
+          if ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)) {
+            e.preventDefault();
+          }
+        } else {
+          e.preventDefault();
+        }
+      } else {
+        e.preventDefault();
+      }
+    }, { passive: false, capture: true });
+
+    panel.addEventListener('scroll', (e) => {
+      e.stopPropagation();
+    }, true);
+
+    const contentArea = panel.querySelector('#qlp-preview-content');
+    if (contentArea) {
+      contentArea.addEventListener('wheel', (e) => {
+        e.stopPropagation();
+        const isScrollable = contentArea.scrollHeight > contentArea.clientHeight;
+        if (isScrollable) {
+          const atTop = contentArea.scrollTop === 0;
+          const atBottom = contentArea.scrollTop + contentArea.clientHeight >= contentArea.scrollHeight - 1;
+          
+          if ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)) {
+            e.preventDefault();
+          }
+        } else {
+          e.preventDefault();
+        }
+      }, { passive: false, capture: true });
+
+      contentArea.addEventListener('scroll', (e) => {
+        e.stopPropagation();
+      }, true);
+    }
+
     previewPanel = panel;
     return panel;
   }
@@ -378,6 +424,7 @@
     const siteName = escapeHtml(data.siteName || getHostname(url));
     const safeIcon = escapeHtml(icon);
     const safeImage = image ? escapeHtml(image) : '';
+    const safeUrl = escapeHtml(url);
 
     let mediaHtml = '';
     if (type === 'video-site' && data.video) {
@@ -395,6 +442,9 @@
       `;
     }
 
+    const urlObj = new URL(url);
+    const canEmbed = !['google.com', 'github.com', 'twitter.com', 'facebook.com', 'instagram.com', 'netflix.com'].some(d => urlObj.hostname.includes(d));
+
     container.innerHTML = `
       <div class="qlp-webpage-preview">
         ${mediaHtml}
@@ -402,12 +452,49 @@
           <div class="qlp-webpage-header">
             ${icon ? `<img src="${safeIcon}" class="qlp-favicon" alt="" onerror="this.style.display='none'" />` : ''}
             <span class="qlp-site-name">${siteName}</span>
+            ${canEmbed ? `<button class="qlp-embed-toggle" data-url="${safeUrl}" title="切换网页预览模式">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1zm7 0h-1.5v-.5h-2v3h2V13H18v1c0 .55-.45 1-1 1h-3c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1z"/>
+              </svg>
+              网页预览
+            </button>` : ''}
           </div>
           <div class="qlp-webpage-title">${title}</div>
           ${description ? `<div class="qlp-webpage-description">${description}</div>` : ''}
+          <div class="qlp-webpage-url" title="${safeUrl}">${safeUrl}</div>
+        </div>
+        <div class="qlp-embed-container" style="display: none;">
+          <iframe src="${safeUrl}" class="qlp-embed-iframe" sandbox="allow-scripts allow-same-origin allow-popups" loading="lazy"></iframe>
         </div>
       </div>
     `;
+
+    const toggleBtn = container.querySelector('.qlp-embed-toggle');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const embedContainer = container.querySelector('.qlp-embed-container');
+        const infoDiv = container.querySelector('.qlp-webpage-info');
+        const mediaContainer = container.querySelector('.qlp-media-container, .qlp-og-image-container');
+        const isActive = toggleBtn.classList.contains('qlp-embed-active');
+        
+        if (isActive) {
+          toggleBtn.classList.remove('qlp-embed-active');
+          embedContainer.style.display = 'none';
+          if (infoDiv) infoDiv.style.display = '';
+          if (mediaContainer) mediaContainer.style.display = '';
+          const iframe = embedContainer.querySelector('iframe');
+          if (iframe) iframe.src = 'about:blank';
+        } else {
+          toggleBtn.classList.add('qlp-embed-active');
+          embedContainer.style.display = 'block';
+          if (infoDiv) infoDiv.style.display = 'none';
+          if (mediaContainer) mediaContainer.style.display = 'none';
+          const iframe = embedContainer.querySelector('iframe');
+          if (iframe) iframe.src = url;
+        }
+      });
+    }
   }
 
   function renderFallbackPreview(url, container, type) {
@@ -424,6 +511,9 @@
     const safeIcon = escapeHtml(icon);
     const safeType = typeLabels[type] || '链接';
 
+    const urlObj = new URL(url);
+    const canEmbed = !['google.com', 'github.com', 'twitter.com', 'facebook.com', 'instagram.com', 'netflix.com'].some(d => urlObj.hostname.includes(d));
+
     container.innerHTML = `
       <div class="qlp-webpage-preview">
         <div class="qlp-webpage-info qlp-fallback-info">
@@ -434,11 +524,44 @@
           </div>
           <div class="qlp-webpage-title">${safeUrl}</div>
           <div class="qlp-webpage-description">
-            点击右上角按钮在新标签页中打开查看完整内容
+            ${canEmbed ? '点击下方按钮可尝试在预览中打开网页，或点击右上角在新标签页打开' : '点击右上角按钮在新标签页中打开查看完整内容'}
           </div>
+          ${canEmbed ? `<button class="qlp-embed-toggle qlp-embed-toggle-full" data-url="${safeUrl}" style="margin-top: 12px;">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1zm7 0h-1.5v-.5h-2v3h2V13H18v1c0 .55-.45 1-1 1h-3c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1z"/>
+              </svg>
+              尝试网页预览
+            </button>` : ''}
+        </div>
+        <div class="qlp-embed-container" style="display: none;">
+          <iframe src="${safeUrl}" class="qlp-embed-iframe" sandbox="allow-scripts allow-same-origin allow-popups" loading="lazy"></iframe>
         </div>
       </div>
     `;
+
+    const toggleBtn = container.querySelector('.qlp-embed-toggle');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const embedContainer = container.querySelector('.qlp-embed-container');
+        const infoDiv = container.querySelector('.qlp-webpage-info');
+        const isActive = toggleBtn.classList.contains('qlp-embed-active');
+        
+        if (isActive) {
+          toggleBtn.classList.remove('qlp-embed-active');
+          embedContainer.style.display = 'none';
+          if (infoDiv) infoDiv.style.display = '';
+          const iframe = embedContainer.querySelector('iframe');
+          if (iframe) iframe.src = 'about:blank';
+        } else {
+          toggleBtn.classList.add('qlp-embed-active');
+          embedContainer.style.display = 'block';
+          if (infoDiv) infoDiv.style.display = 'none';
+          const iframe = embedContainer.querySelector('iframe');
+          if (iframe) iframe.src = url;
+        }
+      });
+    }
   }
 
   function getFaviconFromUrl(url) {
@@ -552,8 +675,27 @@
     }
   }
 
-  function handleScroll() {
-    if (previewPanel && previewPanel.classList.contains('qlp-visible')) {
+  function handleScroll(event) {
+    if (!previewPanel || !previewPanel.classList.contains('qlp-visible')) {
+      return;
+    }
+
+    let scrollTarget = event.target;
+    if (event.composedPath && event.composedPath().length > 0) {
+      scrollTarget = event.composedPath()[0];
+    }
+
+    const isDocumentScroll = scrollTarget === document || 
+                            scrollTarget === document.documentElement || 
+                            scrollTarget === document.body ||
+                            scrollTarget === window;
+
+    if (isDocumentScroll) {
+      hidePreview();
+      return;
+    }
+
+    if (previewPanel && previewPanel.contains && !previewPanel.contains(scrollTarget)) {
       hidePreview();
     }
   }

@@ -73,9 +73,12 @@
 
 .qlp-preview-content {
   min-height: 200px;
-  max-height: 400px;
-  overflow: auto;
+  max-height: 500px;
+  overflow-y: auto;
+  overflow-x: hidden;
   background: #f9fafb;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 .qlp-preview-footer {
@@ -242,11 +245,70 @@
 .qlp-webpage-description {
   font-size: 13px;
   color: #6b7280;
-  line-height: 1.5;
+  line-height: 1.6;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.qlp-webpage-url {
+  font-size: 11px;
+  color: #9ca3af;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-top: 8px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.qlp-embed-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #667eea;
+  background: #f0edff;
+  border: 1px solid #c7d2fe;
+  border-radius: 12px;
+  cursor: pointer;
+  margin-left: auto;
+  transition: all 0.2s ease;
+}
+
+.qlp-embed-toggle:hover {
+  background: #e0e7ff;
+  border-color: #a5b4fc;
+}
+
+.qlp-embed-toggle.qlp-embed-active {
+  color: #ffffff;
+  background: #667eea;
+  border-color: #667eea;
+}
+
+.qlp-embed-container {
+  width: 100%;
+  height: 400px;
+  background: #ffffff;
+  border-radius: 0 0 8px 8px;
+  overflow: hidden;
+}
+
+.qlp-embed-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+
+.qlp-embed-toggle-full {
+  margin-left: auto !important;
+  margin-right: auto !important;
+  display: inline-flex !important;
 }
 
 .qlp-fallback-info {
@@ -348,5 +410,31 @@
 
   .qlp-preview-content::-webkit-scrollbar-thumb:hover {
     background: #6b7280;
+  }
+
+  .qlp-webpage-url {
+    color: #6b7280;
+    border-top-color: #374151;
+  }
+
+  .qlp-embed-toggle {
+    color: #a5b4fc;
+    background: #312e81;
+    border-color: #4338ca;
+  }
+
+  .qlp-embed-toggle:hover {
+    background: #3730a3;
+    border-color: #6366f1;
+  }
+
+  .qlp-embed-toggle.qlp-embed-active {
+    color: #ffffff;
+    background: #6366f1;
+    border-color: #6366f1;
+  }
+
+  .qlp-embed-container {
+    background: #111827;
   }
 }
