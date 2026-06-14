@@ -14,7 +14,29 @@
     enableAudioPreview: true,
     enableImagePreview: true,
     enableWebpagePreview: true,
-    blacklist: []
+    blacklist: [],
+    enableSecurityCheck: true,
+    securityRules: {
+      checkPhishing: true,
+      checkMalicious: true,
+      checkSuspicious: true,
+      checkRedirect: true
+    },
+    batchMode: {
+      enabled: true,
+      hotkey: 'Shift',
+      enableFloatingMarker: true,
+      autoShowCompare: true
+    },
+    theme: {
+      mode: 'system',
+      primaryColor: '#667eea',
+      secondaryColor: '#764ba2',
+      borderRadius: '12px',
+      shadowIntensity: 'medium',
+      fontSize: '14px',
+      componentOrder: ['header', 'content', 'footer', 'security']
+    }
   };
 
   let settings = { ...DEFAULT_SETTINGS };
@@ -23,9 +45,236 @@
   let previewPanel = null;
   let currentLink = null;
   let isPanelHovered = false;
+  let isBatchModeActive = false;
+  let batchCollectedLinks = [];
+  let batchComparePanel = null;
+  let linkMarkerElements = new Map();
 
   const NO_EMBED_DOMAINS = [
   ];
+
+  const PHISHING_KEYWORDS = [
+    'login', 'signin', 'verify', 'account', 'secure', 'confirm', 'update',
+    'wallet', 'crypto', 'bitcoin', 'ethereum', 'prize', 'winner', 'free',
+    'urgent', 'immediate', 'suspended', 'limited', 'exclusive', 'claim',
+    'password', 'creditcard', 'banking', 'paypal', 'appleid', 'googleid',
+    'microsoft', 'amazon', 'facebook', 'instagram', 'twitter'
+  ];
+
+  const MALICIOUS_TLDS = [
+    '.xyz', '.top', '.club', '.online', '.site', '.website', '.space',
+    '.fun', '.tk', '.ml', '.ga', '.cf', '.gq', '.work', '.biz', '.info'
+  ];
+
+  const SUSPICIOUS_PATTERNS = [
+    /\d{5,}/,
+    /-{2,}/,
+    /[a-z0-9]{20,}/i,
+    /\.(php|asp|aspx|jsp|cgi)\?.*=/i,
+    /javascript:/i,
+    /data:/i
+  ];
+
+  const TRUSTED_DOMAINS = [
+    'google.com', 'youtube.com', 'facebook.com', 'twitter.com', 'instagram.com',
+    'linkedin.com', 'github.com', 'stackoverflow.com', 'apple.com', 'microsoft.com',
+    'amazon.com', 'paypal.com', 'netflix.com', 'spotify.com', 'wikipedia.org',
+    'baidu.com', 'zhihu.com', 'bilibili.com', 'taobao.com', 'jd.com',
+    'qq.com', 'weibo.com', 'douyin.com', 'kuaishou.com', 'xiaohongshu.com'
+  ];
+
+  function evaluateUrlSecurity(url) {
+    if (!settings.enableSecurityCheck) {
+      return { level: 'unknown', score: 0, risks: [] };
+    }
+
+    const risks = [];
+    let score = 100;
+
+    try {
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname.toLowerCase();
+      const pathname = urlObj.pathname.toLowerCase();
+      const search = urlObj.search.toLowerCase();
+      const fullUrl = url.toLowerCase();
+
+      if (settings.securityRules.checkPhishing) {
+        for (const keyword of PHISHING_KEYWORDS) {
+          if (fullUrl.includes(keyword) && !isTrustedDomain(hostname)) {
+            risks.push({
+              type: 'phishing',
+              severity: 'high',
+              message: `包含可疑关键词: ${keyword}`
+            });
+            score -= 20;
+          }
+        }
+
+        if (/login|signin|account|secure|verify/i.test(pathname) && !isTrustedDomain(hostname)) {
+          risks.push({
+            type: 'phishing',
+            severity: 'high',
+            message: '疑似登录页面，请核实网站真伪'
+          });
+          score -= 25;
+        }
+      }
+
+      if (settings.securityRules.checkMalicious) {
+        for (const tld of MALICIOUS_TLDS) {
+          if (hostname.endsWith(tld)) {
+            risks.push({
+              type: 'malicious',
+              severity: 'medium',
+              message: `使用可疑顶级域名: ${tld}`
+            });
+            score -= 15;
+            break;
+          }
+        }
+
+        if (hostname.startsWith('www.') && hostname.length > 50) {
+          risks.push({
+            type: 'malicious',
+            severity: 'medium',
+            message: '域名过长，可能是伪装的恶意网站'
+          });
+          score -= 10;
+        }
+      }
+
+      if (settings.securityRules.checkSuspicious) {
+        for (const pattern of SUSPICIOUS_PATTERNS) {
+          if (pattern.test(url)) {
+            risks.push({
+              type: 'suspicious',
+              severity: 'low',
+              message: 'URL 包含可疑模式'
+            });
+            score -= 5;
+            break;
+          }
+        }
+
+        if (urlObj.protocol === 'http:') {
+          risks.push({
+            type: 'suspicious',
+            severity: 'low',
+            message: '非 HTTPS 连接，数据传输不安全'
+          });
+          score -= 10;
+        }
+
+        if (search.length > 200) {
+          risks.push({
+            type: 'suspicious',
+            severity: 'low',
+            message: 'URL 参数过长'
+          });
+          score -= 5;
+        }
+      }
+
+      if (settings.securityRules.checkRedirect) {
+        if (/redirect|url=|link=|href=|go=/i.test(search)) {
+          risks.push({
+            type: 'redirect',
+            severity: 'medium',
+            message: '包含跳转参数，可能跳转到外部网站'
+          });
+          score -= 15;
+        }
+      }
+
+      if (isTrustedDomain(hostname)) {
+        score = Math.min(100, score + 20);
+        risks = risks.filter(r => r.type === 'redirect');
+      }
+
+      let level = 'unknown';
+      if (score >= 80) level = 'safe';
+      else if (score >= 60) level = 'low';
+      else if (score >= 40) level = 'medium';
+      else level = 'high';
+
+      score = Math.max(0, Math.min(100, score));
+
+      return { level, score, risks, hostname };
+    } catch (e) {
+      return { level: 'unknown', score: 0, risks: [{ type: 'error', severity: 'low', message: '无法解析 URL' }] };
+    }
+  }
+
+  function isTrustedDomain(hostname) {
+    return TRUSTED_DOMAINS.some(domain => 
+      hostname === domain || hostname.endsWith('.' + domain)
+    );
+  }
+
+  function getSecurityLevelInfo(level) {
+    const levels = {
+      safe: {
+        label: '安全',
+        color: '#10b981',
+        bgColor: '#d1fae5',
+        borderColor: '#6ee7b7',
+        icon: '✓'
+      },
+      low: {
+        label: '低风险',
+        color: '#f59e0b',
+        bgColor: '#fef3c7',
+        borderColor: '#fde68a',
+        icon: '⚠'
+      },
+      medium: {
+        label: '中风险',
+        color: '#f97316',
+        bgColor: '#ffedd5',
+        borderColor: '#fdba74',
+        icon: '⚡'
+      },
+      high: {
+        label: '高风险',
+        color: '#ef4444',
+        bgColor: '#fee2e2',
+        borderColor: '#fca5a5',
+        icon: '✕'
+      },
+      unknown: {
+        label: '未知',
+        color: '#6b7280',
+        bgColor: '#f3f4f6',
+        borderColor: '#d1d5db',
+        icon: '?'
+      }
+    };
+    return levels[level] || levels.unknown;
+  }
+
+  function createSecurityBadge(securityInfo) {
+    if (!settings.enableSecurityCheck) return '';
+    
+    const levelInfo = getSecurityLevelInfo(securityInfo.level);
+    const risksHtml = securityInfo.risks && securityInfo.risks.length > 0 
+      ? securityInfo.risks.map(r => `<div class="qlp-security-risk qlp-risk-${r.severity}">${escapeHtml(r.message)}</div>`).join('')
+      : '<div class="qlp-security-risk-none">未检测到风险</div>';
+
+    return `
+      <div class="qlp-security-badge" style="border-color: ${levelInfo.borderColor}; background: ${levelInfo.bgColor};">
+        <div class="qlp-security-header" style="color: ${levelInfo.color};">
+          <span class="qlp-security-icon">${levelInfo.icon}</span>
+          <span class="qlp-security-level">${levelInfo.label}</span>
+          <span class="qlp-security-score">${securityInfo.score} 分</span>
+        </div>
+        ${securityInfo.risks && securityInfo.risks.length > 0 ? `
+          <div class="qlp-security-risks">
+            ${risksHtml}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
 
   function canEmbedUrl(url) {
     return true;
@@ -232,7 +481,7 @@
     return panel;
   }
 
-  function showPreview(link, event) {
+  function showPreview(link, event, securityInfo = null) {
     if (!link || !link.href) return;
     if (!isValidUrl(link.href)) return;
     if (isInBlacklist(window.location.href)) return;
@@ -255,6 +504,8 @@
     currentLink = absoluteUrl;
     const panel = createPreviewPanel();
 
+    const secInfo = securityInfo || evaluateUrlSecurity(absoluteUrl);
+
     const linkText = link.textContent?.trim() || link.title || '';
     panel.querySelector('#qlp-preview-title').textContent = linkText ? 
       (linkText.length > 50 ? linkText.slice(0, 50) + '...' : linkText) : '链接预览';
@@ -264,13 +515,19 @@
     openBtn.href = absoluteUrl;
 
     const content = panel.querySelector('#qlp-preview-content');
-    content.innerHTML = `
+    
+    const securityBadge = createSecurityBadge(secInfo);
+    const loadingHtml = `
       <div class="qlp-loading">
         <div class="qlp-spinner"></div>
         <div class="qlp-loading-text">正在加载预览...</div>
       </div>
     `;
+    
+    content.innerHTML = renderContentWithOrder(loadingHtml, securityBadge);
 
+    applyThemeToPanel(panel);
+    applyComponentVisibility(panel);
     positionPreviewPanel(event, panel);
     panel.classList.add('qlp-visible');
 
@@ -288,12 +545,13 @@
           title: linkText || hostname,
           type: linkType,
           favicon: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=32`,
-          siteName: hostname
+          siteName: hostname,
+          security: secInfo
         }
       });
     } catch (e) {}
 
-    loadPreviewContent(absoluteUrl, linkType, content);
+    loadPreviewContent(absoluteUrl, linkType, content, secInfo);
   }
 
   function positionPreviewPanel(event, panel) {
@@ -346,53 +604,141 @@
     }, 300);
   }
 
-  function loadPreviewContent(url, type, container) {
+  function applyThemeToPanel(panel) {
+    if (!panel || !settings.theme) return;
+    
+    const theme = settings.theme;
+    const root = document.documentElement;
+    
+    root.style.setProperty('--qlp-primary-color', theme.primaryColor);
+    root.style.setProperty('--qlp-secondary-color', theme.secondaryColor);
+    root.style.setProperty('--qlp-border-radius', theme.borderRadius);
+    root.style.setProperty('--qlp-font-size', theme.fontSize);
+    
+    let shadowValue = '0 20px 60px rgba(0, 0, 0, 0.15), 0 8px 20px rgba(0, 0, 0, 0.1)';
+    if (theme.shadowIntensity === 'low') {
+      shadowValue = '0 8px 24px rgba(0, 0, 0, 0.1), 0 4px 8px rgba(0, 0, 0, 0.06)';
+    } else if (theme.shadowIntensity === 'high') {
+      shadowValue = '0 30px 80px rgba(0, 0, 0, 0.25), 0 12px 30px rgba(0, 0, 0, 0.15)';
+    } else if (theme.shadowIntensity === 'none') {
+      shadowValue = 'none';
+    }
+    root.style.setProperty('--qlp-shadow', shadowValue);
+    
+    panel.style.borderRadius = theme.borderRadius;
+    panel.style.fontSize = theme.fontSize;
+    panel.style.setProperty('box-shadow', shadowValue, 'important');
+    
+    const header = panel.querySelector('.qlp-preview-header');
+    if (header) {
+      header.style.background = `linear-gradient(135deg, ${theme.primaryColor} 0%, ${theme.secondaryColor} 100%)`;
+    }
+
+    if (theme.mode === 'dark') {
+      panel.classList.add('qlp-dark-theme');
+    } else if (theme.mode === 'light') {
+      panel.classList.remove('qlp-dark-theme');
+    } else {
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        panel.classList.add('qlp-dark-theme');
+      } else {
+        panel.classList.remove('qlp-dark-theme');
+      }
+    }
+  }
+
+  function loadPreviewContent(url, type, container, securityInfo = null) {
+    const securityBadge = securityInfo && settings.enableSecurityCheck ? createSecurityBadge(securityInfo) : '';
+    
     switch (type) {
       case 'image':
-        loadImagePreview(url, container);
+        loadImagePreview(url, container, securityBadge);
         break;
       case 'video':
-        loadVideoPreview(url, container);
+        loadVideoPreview(url, container, securityBadge);
         break;
       case 'audio':
-        loadAudioPreview(url, container);
+        loadAudioPreview(url, container, securityBadge);
         break;
       case 'video-site':
       case 'audio-site':
       case 'webpage':
       default:
-        loadWebpagePreview(url, container, type);
+        loadWebpagePreview(url, container, type, securityBadge);
         break;
     }
   }
 
-  function loadImagePreview(url, container) {
+  function loadImagePreview(url, container, securityBadge = '') {
     const img = new Image();
     img.onload = () => {
-      container.innerHTML = `
+      const contentHtml = `
         <div class="qlp-image-container">
           <img src="${url}" alt="图片预览" class="qlp-preview-image" />
         </div>
       `;
+      container.innerHTML = renderContentWithOrder(contentHtml, securityBadge);
     };
     img.onerror = () => {
-      container.innerHTML = `
+      const contentHtml = `
         <div class="qlp-loading">
           <div class="qlp-loading-text">图片加载失败</div>
         </div>
       `;
+      container.innerHTML = renderContentWithOrder(contentHtml, securityBadge);
     };
     img.src = url;
   }
 
-  function loadVideoPreview(url, container) {
-    container.innerHTML = `
+  function renderContentWithOrder(contentHtml, securityBadge) {
+    const order = settings.theme.componentOrder;
+    const visibility = settings.theme.componentVisibility || {};
+    let result = '';
+    
+    for (const component of order) {
+      if (visibility[component] === false) continue;
+      
+      if (component === 'security' && securityBadge && settings.enableSecurityCheck) {
+        result += securityBadge;
+      } else if (component === 'content') {
+        result += contentHtml;
+      }
+    }
+    
+    if (!order.includes('content') || visibility['content'] === false) {
+      if (visibility['content'] !== false) {
+        result = (securityBadge && settings.enableSecurityCheck && visibility['security'] !== false ? securityBadge : '') + contentHtml;
+      }
+    }
+    
+    return result;
+  }
+
+  function applyComponentVisibility(panel) {
+    if (!panel || !settings.theme || !settings.theme.componentVisibility) return;
+    
+    const visibility = settings.theme.componentVisibility;
+    
+    const header = panel.querySelector('.qlp-preview-header');
+    const footer = panel.querySelector('.qlp-preview-footer');
+    
+    if (header) {
+      header.style.display = visibility['header'] === false ? 'none' : '';
+    }
+    if (footer) {
+      footer.style.display = visibility['footer'] === false ? 'none' : '';
+    }
+  }
+
+  function loadVideoPreview(url, container, securityBadge = '') {
+    const contentHtml = `
       <div class="qlp-media-container">
         <video src="${url}" controls class="qlp-preview-media" preload="metadata" muted>
           您的浏览器不支持视频播放
         </video>
       </div>
     `;
+    container.innerHTML = renderContentWithOrder(contentHtml, securityBadge);
     const video = container.querySelector('video');
     if (video) {
       video.addEventListener('loadeddata', () => {
@@ -401,8 +747,8 @@
     }
   }
 
-  function loadAudioPreview(url, container) {
-    container.innerHTML = `
+  function loadAudioPreview(url, container, securityBadge = '') {
+    const contentHtml = `
       <div class="qlp-audio-container">
         <div class="qlp-audio-icon">
           <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
@@ -414,19 +760,20 @@
         </audio>
       </div>
     `;
+    container.innerHTML = renderContentWithOrder(contentHtml, securityBadge);
   }
 
-  function loadWebpagePreview(url, container, type) {
+  function loadWebpagePreview(url, container, type, securityBadge = '') {
     chrome.runtime.sendMessage({ action: 'fetchPageInfo', url: url }, (response) => {
       if (chrome.runtime.lastError) {
-        renderFallbackPreview(url, container, type);
+        renderFallbackPreview(url, container, type, securityBadge);
         return;
       }
 
       if (response && response.success) {
-        renderRichPreview(url, response.data, container, type);
+        renderRichPreview(url, response.data, container, type, securityBadge);
       } else {
-        renderFallbackPreview(url, container, type);
+        renderFallbackPreview(url, container, type, securityBadge);
       }
     });
   }
@@ -437,7 +784,7 @@
     return div.innerHTML;
   }
 
-  function renderRichPreview(url, data, container, type) {
+  function renderRichPreview(url, data, container, type, securityBadge = '') {
     const icon = data.favicon || getFaviconFromUrl(url);
     const image = data.image || '';
     const title = escapeHtml(data.title || url);
@@ -504,7 +851,7 @@
       `;
     }
 
-    container.innerHTML = `
+    const contentHtml = `
       <div class="qlp-webpage-preview">
         ${mediaHtml}
         <div class="qlp-webpage-info">
@@ -605,6 +952,8 @@
         </div>
       </div>
     `;
+    
+    container.innerHTML = renderContentWithOrder(contentHtml, securityBadge);
 
     const toggleBtn = container.querySelector('.qlp-embed-toggle');
     const embedContainer = container.querySelector('.qlp-embed-container');
@@ -768,7 +1117,7 @@
     }
   }
 
-  function renderFallbackPreview(url, container, type) {
+  function renderFallbackPreview(url, container, type, securityBadge = '') {
     const icon = getFaviconFromUrl(url);
     const hostname = getHostname(url);
     const typeLabels = {
@@ -782,7 +1131,7 @@
     const safeIcon = escapeHtml(icon);
     const safeType = typeLabels[type] || '链接';
 
-    container.innerHTML = `
+    const contentHtml = `
       <div class="qlp-webpage-preview">
         <div class="qlp-webpage-info qlp-fallback-info">
           <div class="qlp-webpage-header">
@@ -845,6 +1194,8 @@
         </div>
       </div>
     `;
+    
+    container.innerHTML = renderContentWithOrder(contentHtml, securityBadge);
 
     const toggleBtn = container.querySelector('.qlp-embed-toggle');
     const embedContainer = container.querySelector('.qlp-embed-container');
@@ -1183,6 +1534,7 @@
   }
 
   function handleLinkHover(event) {
+    if (isBatchModeActive) return;
     if (settings.triggerMode !== 'hover') return;
     if (isInBlacklist(window.location.href)) return;
 
@@ -1202,6 +1554,7 @@
   }
 
   function handleLinkLeave(event) {
+    if (isBatchModeActive) return;
     if (settings.triggerMode !== 'hover') return;
 
     const link = event.target.closest('a');
@@ -1216,6 +1569,7 @@
   }
 
   function handleLinkClick(event) {
+    if (isBatchModeActive) return;
     if (settings.triggerMode !== 'click') return;
     if (isInBlacklist(window.location.href)) return;
 
@@ -1240,10 +1594,442 @@
   function handleKeyDown(event) {
     if (event.key === 'Escape') {
       hidePreview();
+      if (isBatchModeActive) {
+        cancelBatchMode();
+      }
+    }
+    
+    if (!settings.batchMode.enabled) return;
+    
+    const hotkey = settings.batchMode.hotkey;
+    const isHotkeyPressed = 
+      (hotkey === 'Shift' && event.shiftKey) ||
+      (hotkey === 'Ctrl' && (event.ctrlKey || event.metaKey)) ||
+      (hotkey === 'Alt' && event.altKey) ||
+      (hotkey === 'Space' && event.code === 'Space');
+    
+    if (isHotkeyPressed && !isBatchModeActive && !event.repeat) {
+      startBatchMode();
     }
   }
 
+  function handleKeyUp(event) {
+    if (!settings.batchMode.enabled) return;
+    
+    const hotkey = settings.batchMode.hotkey;
+    const isHotkeyReleased = 
+      (hotkey === 'Shift' && !event.shiftKey) ||
+      (hotkey === 'Ctrl' && !event.ctrlKey && !event.metaKey) ||
+      (hotkey === 'Alt' && !event.altKey) ||
+      (hotkey === 'Space' && event.code === 'Space');
+    
+    if (isHotkeyReleased && isBatchModeActive) {
+      endBatchMode();
+    }
+  }
+
+  function startBatchMode() {
+    isBatchModeActive = true;
+    batchCollectedLinks = [];
+    linkMarkerElements.clear();
+    hidePreview();
+    
+    document.body.classList.add('qlp-batch-mode-active');
+    showBatchModeIndicator();
+    
+    document.querySelectorAll('a[href]').forEach(link => {
+      if (isValidUrl(link.href) && !isInBlacklist(window.location.href)) {
+        link.addEventListener('mouseenter', handleBatchModeLinkHover);
+      }
+    });
+  }
+
+  function handleBatchModeLinkHover(event) {
+    if (!isBatchModeActive) return;
+    
+    const link = event.target.closest('a');
+    if (!link || !link.href || !isValidUrl(link.href)) return;
+    
+    const absoluteUrl = getAbsoluteUrl(link.href);
+    const existingIdx = batchCollectedLinks.findIndex(l => l.url === absoluteUrl);
+    
+    if (existingIdx === -1) {
+      const securityInfo = evaluateUrlSecurity(absoluteUrl);
+      const linkType = getLinkType(absoluteUrl);
+      const linkData = {
+        url: absoluteUrl,
+        title: link.textContent?.trim() || link.title || absoluteUrl,
+        type: linkType,
+        security: securityInfo,
+        favicon: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(getHostname(absoluteUrl))}&sz=32`,
+        timestamp: Date.now(),
+        element: link
+      };
+      
+      batchCollectedLinks.push(linkData);
+      
+      if (settings.batchMode.enableFloatingMarker) {
+        addLinkMarker(link, securityInfo, batchCollectedLinks.length);
+      }
+      
+      chrome.runtime.sendMessage({
+        action: 'addPreviewHistory',
+        item: {
+          url: absoluteUrl,
+          title: linkData.title,
+          type: linkType,
+          favicon: linkData.favicon,
+          siteName: getHostname(absoluteUrl),
+          security: securityInfo
+        }
+      });
+      
+      updateBatchCount();
+    }
+  }
+
+  function addLinkMarker(link, securityInfo, index) {
+    const marker = document.createElement('div');
+    marker.className = 'qlp-link-marker';
+    
+    const levelInfo = getSecurityLevelInfo(securityInfo.level);
+    marker.style.borderColor = levelInfo.borderColor;
+    marker.style.background = levelInfo.bgColor;
+    marker.style.color = levelInfo.color;
+    marker.innerHTML = `<span class="qlp-marker-number">${index}</span><span class="qlp-marker-icon">${levelInfo.icon}</span>`;
+    
+    const rect = link.getBoundingClientRect();
+    marker.style.left = (rect.right + 4) + 'px';
+    marker.style.top = (rect.top + window.scrollY) + 'px';
+    
+    document.body.appendChild(marker);
+    linkMarkerElements.set(link, marker);
+  }
+
+  function updateLinkMarkers() {
+    linkMarkerElements.forEach((marker, link) => {
+      const rect = link.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        marker.style.left = (rect.right + 4) + 'px';
+        marker.style.top = (rect.top + window.scrollY) + 'px';
+        marker.style.display = 'flex';
+      } else {
+        marker.style.display = 'none';
+      }
+    });
+  }
+
+  function showBatchModeIndicator() {
+    let indicator = document.getElementById('qlp-batch-indicator');
+    if (!indicator) {
+      indicator = document.createElement('div');
+      indicator.id = 'qlp-batch-indicator';
+      indicator.className = 'qlp-batch-indicator';
+      indicator.innerHTML = `
+        <span class="qlp-indicator-icon">📋</span>
+        <span class="qlp-indicator-text">批量预览模式</span>
+        <span class="qlp-indicator-count" id="qlp-batch-count">0</span>
+        <span class="qlp-indicator-hint">松开 ${settings.batchMode.hotkey} 对比 / Esc 取消</span>
+      `;
+      document.body.appendChild(indicator);
+    }
+    indicator.style.display = 'flex';
+  }
+
+  function updateBatchCount() {
+    const countEl = document.getElementById('qlp-batch-count');
+    if (countEl) {
+      countEl.textContent = batchCollectedLinks.length;
+    }
+  }
+
+  function endBatchMode() {
+    isBatchModeActive = false;
+    
+    document.body.classList.remove('qlp-batch-mode-active');
+    
+    const indicator = document.getElementById('qlp-batch-indicator');
+    if (indicator) {
+      indicator.style.display = 'none';
+    }
+    
+    linkMarkerElements.forEach(marker => marker.remove());
+    linkMarkerElements.clear();
+    
+    document.querySelectorAll('a[href]').forEach(link => {
+      link.removeEventListener('mouseenter', handleBatchModeLinkHover);
+    });
+    
+    if (batchCollectedLinks.length > 0) {
+      if (settings.batchMode.autoShowCompare) {
+        showBatchCompareView();
+      }
+    }
+  }
+
+  function cancelBatchMode() {
+    isBatchModeActive = false;
+    batchCollectedLinks = [];
+    
+    document.body.classList.remove('qlp-batch-mode-active');
+    
+    const indicator = document.getElementById('qlp-batch-indicator');
+    if (indicator) {
+      indicator.style.display = 'none';
+    }
+    
+    linkMarkerElements.forEach(marker => marker.remove());
+    linkMarkerElements.clear();
+    
+    document.querySelectorAll('a[href]').forEach(link => {
+      link.removeEventListener('mouseenter', handleBatchModeLinkHover);
+    });
+  }
+
+  function createBatchComparePanel() {
+    if (batchComparePanel) return batchComparePanel;
+    
+    const panel = document.createElement('div');
+    panel.className = 'qlp-batch-compare-panel';
+    panel.id = 'qlp-batch-compare-panel';
+    panel.innerHTML = `
+      <div class="qlp-compare-header">
+        <div class="qlp-compare-title">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+            <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
+          </svg>
+          链接批量对比视图
+          <span class="qlp-compare-count">(${batchCollectedLinks.length} 个链接)</span>
+        </div>
+        <div class="qlp-compare-actions">
+          <select class="qlp-compare-sort" id="qlp-compare-sort">
+            <option value="order">按选择顺序</option>
+            <option value="security-high">安全性: 高到低</option>
+            <option value="security-low">安全性: 低到高</option>
+            <option value="type">按类型分组</option>
+          </select>
+          <button class="qlp-compare-action-btn" id="qlp-compare-export" title="导出结果">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+            </svg>
+            导出
+          </button>
+          <button class="qlp-compare-action-btn" id="qlp-compare-close" title="关闭 (Esc)">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="qlp-compare-content" id="qlp-compare-content">
+        ${renderBatchCompareCards()}
+      </div>
+    `;
+    
+    document.body.appendChild(panel);
+    applyThemeToPanel(panel);
+    
+    panel.querySelector('#qlp-compare-close').addEventListener('click', () => {
+      hideBatchCompareView();
+    });
+    
+    panel.querySelector('#qlp-compare-sort').addEventListener('change', (e) => {
+      sortAndRenderCompareCards(e.target.value);
+    });
+    
+    panel.querySelector('#qlp-compare-export').addEventListener('click', () => {
+      exportBatchResults();
+    });
+    
+    panel.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+    
+    batchComparePanel = panel;
+    return panel;
+  }
+
+  function renderBatchCompareCards() {
+    if (batchCollectedLinks.length === 0) {
+      return `
+        <div class="qlp-compare-empty">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+          </svg>
+          <p>没有选择任何链接</p>
+          <p class="qlp-compare-empty-hint">按住 ${settings.batchMode.hotkey} 键并将鼠标移过链接来收集</p>
+        </div>
+      `;
+    }
+    
+    return batchCollectedLinks.map((link, index) => {
+      const secInfo = link.security || { level: 'unknown', score: 0, risks: [] };
+      const levelInfo = getSecurityLevelInfo(secInfo.level);
+      const typeLabels = {
+        'video': '视频', 'video-site': '视频',
+        'audio': '音频', 'audio-site': '音频',
+        'image': '图片', 'webpage': '网页', 'unknown': '链接'
+      };
+      
+      const risksHtml = secInfo.risks && secInfo.risks.length > 0
+        ? secInfo.risks.map(r => `<span class="qlp-risk-tag qlp-risk-${r.severity}">${escapeHtml(r.message)}</span>`).join('')
+        : '<span class="qlp-risk-safe">✓ 无风险</span>';
+      
+      return `
+        <div class="qlp-compare-card qlp-card-security-${secInfo.level}" data-url="${escapeHtml(link.url)}" data-index="${index}">
+          <div class="qlp-compare-card-header">
+            <div class="qlp-compare-card-index">${index + 1}</div>
+            <img class="qlp-compare-card-favicon" src="${escapeHtml(link.favicon)}" alt="" onerror="this.style.display='none'">
+            <div class="qlp-compare-card-title" title="${escapeHtml(link.title)}">${escapeHtml(link.title.length > 30 ? link.title.slice(0, 30) + '...' : link.title)}</div>
+            <div class="qlp-compare-card-security" style="background: ${levelInfo.bgColor}; color: ${levelInfo.color}; border-color: ${levelInfo.borderColor};">
+              <span class="qlp-security-icon">${levelInfo.icon}</span>
+              <span class="qlp-security-label">${levelInfo.label}</span>
+              <span class="qlp-security-score">${secInfo.score}</span>
+            </div>
+          </div>
+          <div class="qlp-compare-card-body">
+            <div class="qlp-compare-card-url" title="${escapeHtml(link.url)}">${escapeHtml(link.url.length > 50 ? link.url.slice(0, 50) + '...' : link.url)}</div>
+            <div class="qlp-compare-card-meta">
+              <span class="qlp-compare-card-type">${typeLabels[link.type] || '链接'}</span>
+              <span class="qlp-compare-card-domain">${escapeHtml(getHostname(link.url))}</span>
+            </div>
+            ${settings.enableSecurityCheck ? `
+              <div class="qlp-compare-card-risks">
+                ${risksHtml}
+              </div>
+            ` : ''}
+          </div>
+          <div class="qlp-compare-card-footer">
+            <button class="qlp-compare-card-btn qlp-btn-preview" data-url="${escapeHtml(link.url)}">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+              </svg>
+              预览
+            </button>
+            <a class="qlp-compare-card-btn qlp-btn-open" href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>
+              </svg>
+              打开
+            </a>
+            <button class="qlp-compare-card-btn qlp-btn-remove" data-index="${index}">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+              </svg>
+              移除
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function sortAndRenderCompareCards(sortType) {
+    const sorted = [...batchCollectedLinks];
+    
+    switch (sortType) {
+      case 'security-high':
+        sorted.sort((a, b) => (b.security?.score || 0) - (a.security?.score || 0));
+        break;
+      case 'security-low':
+        sorted.sort((a, b) => (a.security?.score || 0) - (b.security?.score || 0));
+        break;
+      case 'type':
+        sorted.sort((a, b) => a.type.localeCompare(b.type));
+        break;
+      case 'order':
+      default:
+        sorted.sort((a, b) => a.timestamp - b.timestamp);
+        break;
+    }
+    
+    batchCollectedLinks = sorted;
+    
+    const content = document.getElementById('qlp-compare-content');
+    if (content) {
+      content.innerHTML = renderBatchCompareCards();
+      bindCompareCardEvents();
+    }
+  }
+
+  function bindCompareCardEvents() {
+    const panel = batchComparePanel;
+    if (!panel) return;
+    
+    panel.querySelectorAll('.qlp-btn-preview').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const url = btn.dataset.url;
+        const fakeLink = { href: url, textContent: '', title: '' };
+        const fakeEvent = { clientX: window.innerWidth / 2, clientY: 100, target: { getBoundingClientRect: () => ({ left: window.innerWidth / 2, top: 50, bottom: 70 }) } };
+        hideBatchCompareView();
+        setTimeout(() => showPreview(fakeLink, fakeEvent), 100);
+      });
+    });
+    
+    panel.querySelectorAll('.qlp-btn-remove').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const index = parseInt(btn.dataset.index, 10);
+        batchCollectedLinks.splice(index, 1);
+        const content = document.getElementById('qlp-compare-content');
+        if (content) {
+          content.innerHTML = renderBatchCompareCards();
+          bindCompareCardEvents();
+        }
+        const countEl = panel.querySelector('.qlp-compare-count');
+        if (countEl) countEl.textContent = `(${batchCollectedLinks.length} 个链接)`;
+      });
+    });
+  }
+
+  function showBatchCompareView() {
+    hidePreview();
+    const panel = createBatchComparePanel();
+    panel.classList.add('qlp-visible');
+    bindCompareCardEvents();
+  }
+
+  function hideBatchCompareView() {
+    if (batchComparePanel) {
+      batchComparePanel.classList.remove('qlp-visible');
+    }
+  }
+
+  function exportBatchResults() {
+    const data = batchCollectedLinks.map(link => ({
+      title: link.title,
+      url: link.url,
+      type: link.type,
+      securityLevel: link.security?.level || 'unknown',
+      securityScore: link.security?.score || 0,
+      risks: link.security?.risks?.map(r => r.message) || [],
+      domain: getHostname(link.url)
+    }));
+    
+    const jsonStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `link-preview-batch-${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   function handleDocClick(event) {
+    if (isBatchModeActive) return;
+    
+    if (batchComparePanel && batchComparePanel.classList.contains('qlp-visible')) {
+      if (!batchComparePanel.contains(event.target)) {
+        hideBatchCompareView();
+        return;
+      }
+    }
+    
     if (previewPanel && previewPanel.classList.contains('qlp-visible')) {
       if (!previewPanel.contains(event.target) && !event.target.closest('a')) {
         hidePreview();
@@ -1252,6 +2038,11 @@
   }
 
   function handleScroll(event) {
+    if (isBatchModeActive) {
+      updateLinkMarkers();
+      return;
+    }
+    
     if (!previewPanel || !previewPanel.classList.contains('qlp-visible')) {
       return;
     }
@@ -1296,8 +2087,24 @@
     document.addEventListener('mouseout', handleLinkLeave, true);
     document.addEventListener('click', handleLinkClick, true);
     document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
     document.addEventListener('click', handleDocClick);
     window.addEventListener('scroll', handleScroll, true);
+
+    const observer = new MutationObserver(() => {
+      if (isBatchModeActive) {
+        document.querySelectorAll('a[href]').forEach(link => {
+          if (isValidUrl(link.href) && !isInBlacklist(window.location.href)) {
+            if (!link._qlpBatchListener) {
+              link.addEventListener('mouseenter', handleBatchModeLinkHover);
+              link._qlpBatchListener = true;
+            }
+          }
+        });
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
 
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'sync') {

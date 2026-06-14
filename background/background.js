@@ -669,7 +669,35 @@ chrome.runtime.onInstalled.addListener(() => {
     enableAudioPreview: true,
     enableImagePreview: true,
     enableWebpagePreview: true,
-    blacklist: []
+    blacklist: [],
+    enableSecurityCheck: true,
+    securityRules: {
+      checkPhishing: true,
+      checkMalicious: true,
+      checkSuspicious: true,
+      checkRedirect: true
+    },
+    batchMode: {
+      enabled: true,
+      hotkey: 'Shift',
+      enableFloatingMarker: true,
+      autoShowCompare: true
+    },
+    theme: {
+      mode: 'system',
+      primaryColor: '#667eea',
+      secondaryColor: '#764ba2',
+      borderRadius: '12px',
+      shadowIntensity: 'medium',
+      fontSize: '14px',
+      componentOrder: ['header', 'content', 'security', 'footer'],
+      componentVisibility: {
+        header: true,
+        content: true,
+        security: true,
+        footer: true
+      }
+    }
   };
 
   chrome.storage.sync.get(defaultSettings, (result) => {
