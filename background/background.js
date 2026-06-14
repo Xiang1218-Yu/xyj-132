@@ -258,6 +258,51 @@ async function fetchPageInfo(url) {
   }
 }
 
+const HISTORY_MAX_ITEMS = 500;
+
+function addPreviewHistory(item) {
+  chrome.storage.local.get({ previewHistory: [] }, (result) => {
+    let history = result.previewHistory;
+    const existingIdx = history.findIndex(h => h.url === item.url);
+    if (existingIdx !== -1) {
+      history.splice(existingIdx, 1);
+    }
+    history.unshift({
+      url: item.url,
+      title: item.title || '',
+      type: item.type || 'webpage',
+      favicon: item.favicon || '',
+      siteName: item.siteName || '',
+      timestamp: Date.now()
+    });
+    if (history.length > HISTORY_MAX_ITEMS) {
+      history = history.slice(0, HISTORY_MAX_ITEMS);
+    }
+    chrome.storage.local.set({ previewHistory: history });
+  });
+}
+
+function getPreviewHistory(callback) {
+  chrome.storage.local.get({ previewHistory: [] }, (result) => {
+    callback(result.previewHistory);
+  });
+}
+
+function clearPreviewHistory(callback) {
+  chrome.storage.local.set({ previewHistory: [] }, () => {
+    if (callback) callback();
+  });
+}
+
+function deletePreviewHistoryItem(url, callback) {
+  chrome.storage.local.get({ previewHistory: [] }, (result) => {
+    let history = result.previewHistory.filter(h => h.url !== url);
+    chrome.storage.local.set({ previewHistory: history }, () => {
+      if (callback) callback(history);
+    });
+  });
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'fetchPageInfo') {
     fetchPageInfo(request.url)
@@ -278,6 +323,33 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch(error => {
         sendResponse({ success: false, error: error.message });
       });
+    return true;
+  }
+
+  if (request.action === 'addPreviewHistory') {
+    addPreviewHistory(request.item);
+    sendResponse({ success: true });
+    return false;
+  }
+
+  if (request.action === 'getPreviewHistory') {
+    getPreviewHistory((history) => {
+      sendResponse({ success: true, data: history });
+    });
+    return true;
+  }
+
+  if (request.action === 'clearPreviewHistory') {
+    clearPreviewHistory(() => {
+      sendResponse({ success: true });
+    });
+    return true;
+  }
+
+  if (request.action === 'deletePreviewHistoryItem') {
+    deletePreviewHistoryItem(request.url, (history) => {
+      sendResponse({ success: true, data: history });
+    });
     return true;
   }
 });

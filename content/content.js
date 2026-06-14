@@ -279,6 +279,20 @@
       hideTimer = null;
     }
 
+    try {
+      const hostname = new URL(absoluteUrl).hostname;
+      chrome.runtime.sendMessage({
+        action: 'addPreviewHistory',
+        item: {
+          url: absoluteUrl,
+          title: linkText || hostname,
+          type: linkType,
+          favicon: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=32`,
+          siteName: hostname
+        }
+      });
+    } catch (e) {}
+
     loadPreviewContent(absoluteUrl, linkType, content);
   }
 
@@ -1149,6 +1163,13 @@
     });
   }
 
+  function handleRePreview(url) {
+    if (!url || !isValidUrl(url)) return;
+    const fakeLink = { href: url, textContent: '', title: '' };
+    const fakeEvent = { clientX: window.innerWidth / 2, clientY: 100, target: { getBoundingClientRect: () => ({ left: window.innerWidth / 2, top: 50, bottom: 70 }) } };
+    showPreview(fakeLink, fakeEvent);
+  }
+
   function init() {
     loadSettings();
 
@@ -1164,6 +1185,13 @@
         for (const key in changes) {
           settings[key] = changes[key].newValue;
         }
+      }
+    });
+
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      if (request.action === 'rePreview' && request.url) {
+        handleRePreview(request.url);
+        sendResponse({ success: true });
       }
     });
   }
