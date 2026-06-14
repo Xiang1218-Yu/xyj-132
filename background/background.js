@@ -625,7 +625,131 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true;
   }
+
+  if (request.action === 'getPreviewRules') {
+    chrome.storage.sync.get({ previewRules: [] }, (result) => {
+      sendResponse({ success: true, data: result.previewRules });
+    });
+    return true;
+  }
+
+  if (request.action === 'addPreviewRule') {
+    chrome.storage.sync.get({ previewRules: [] }, (result) => {
+      const rules = result.previewRules;
+      const newRule = {
+        id: 'rule_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+        name: request.rule.name || '未命名规则',
+        enabled: request.rule.enabled !== false,
+        priority: request.rule.priority || 50,
+        matchType: request.rule.matchType || 'domain',
+        matchValue: request.rule.matchValue || '',
+        caseSensitive: request.rule.caseSensitive || false,
+        actions: {
+          skipPreview: request.rule.actions?.skipPreview || false,
+          forceType: request.rule.actions?.forceType || null,
+          previewWidth: request.rule.actions?.previewWidth || null,
+          previewHeight: request.rule.actions?.previewHeight || null,
+          disableSecurityCheck: request.rule.actions?.disableSecurityCheck || false,
+          autoEmbed: request.rule.actions?.autoEmbed || false,
+          autoQuickRead: request.rule.actions?.autoQuickRead || false
+        }
+      };
+      rules.push(newRule);
+      chrome.storage.sync.set({ previewRules: rules }, () => {
+        sendResponse({ success: true, data: newRule });
+      });
+    });
+    return true;
+  }
+
+  if (request.action === 'updatePreviewRule') {
+    chrome.storage.sync.get({ previewRules: [] }, (result) => {
+      const rules = result.previewRules;
+      const idx = rules.findIndex(r => r.id === request.ruleId);
+      if (idx !== -1) {
+        rules[idx] = { ...rules[idx], ...request.updates };
+        chrome.storage.sync.set({ previewRules: rules }, () => {
+          sendResponse({ success: true, data: rules[idx] });
+        });
+      } else {
+        sendResponse({ success: false, error: '规则不存在' });
+      }
+    });
+    return true;
+  }
+
+  if (request.action === 'deletePreviewRule') {
+    chrome.storage.sync.get({ previewRules: [] }, (result) => {
+      const rules = result.previewRules.filter(r => r.id !== request.ruleId);
+      chrome.storage.sync.set({ previewRules: rules }, () => {
+        sendResponse({ success: true, count: rules.length });
+      });
+    });
+    return true;
+  }
+
+  if (request.action === 'matchPreviewRule') {
+    chrome.storage.sync.get({ previewRules: [] }, (result) => {
+      const matchedRule = matchRuleForUrl(request.url, result.previewRules);
+      sendResponse({ success: true, data: matchedRule });
+    });
+    return true;
+  }
 });
+
+function matchRuleForUrl(url, rules) {
+  if (!rules || rules.length === 0 || !url) return null;
+
+  try {
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname;
+    const pathname = urlObj.pathname;
+    const fullUrl = url;
+
+    const sortedRules = [...rules]
+      .filter(r => r.enabled && r.matchValue)
+      .sort((a, b) => (b.priority || 0) - (a.priority || 0));
+
+    for (const rule of sortedRules) {
+      let matched = false;
+      const matchValue = rule.caseSensitive ? rule.matchValue : rule.matchValue.toLowerCase();
+      const testHostname = rule.caseSensitive ? hostname : hostname.toLowerCase();
+      const testPathname = rule.caseSensitive ? pathname : pathname.toLowerCase();
+      const testUrl = rule.caseSensitive ? fullUrl : fullUrl.toLowerCase();
+
+      switch (rule.matchType) {
+        case 'domain':
+          matched = testHostname === matchValue || testHostname.endsWith('.' + matchValue);
+          break;
+        case 'suffix':
+          matched = testPathname.endsWith(matchValue) || testUrl.endsWith(matchValue);
+          break;
+        case 'keyword':
+          matched = testUrl.includes(matchValue);
+          break;
+        case 'regex':
+          try {
+            const flags = rule.caseSensitive ? '' : 'i';
+            const regex = new RegExp(rule.matchValue, flags);
+            matched = regex.test(fullUrl);
+          } catch (e) {
+            matched = false;
+          }
+          break;
+        default:
+          matched = false;
+      }
+
+      if (matched) {
+        return rule;
+      }
+    }
+  } catch (e) {
+    return null;
+  }
+
+  return null;
+}
 
 async function fetchPageSnapshot(url) {
   const cacheKey = 'snapshot:' + url;
@@ -958,7 +1082,63 @@ chrome.runtime.onInstalled.addListener(() => {
         { key: '4', action: 'qrcode', label: '生成二维码' },
         { key: '5', action: 'share', label: '分享' }
       ]
-    }
+    },
+    previewRules: [
+      {
+        id: 'default_pdf_rule',
+        name: 'PDF 文件跳过预览',
+        enabled: true,
+        priority: 100,
+        matchType: 'suffix',
+        matchValue: '.pdf',
+        caseSensitive: false,
+        actions: {
+          skipPreview: true,
+          forceType: null,
+          previewWidth: null,
+          previewHeight: null,
+          disableSecurityCheck: false,
+          autoEmbed: false,
+          autoQuickRead: false
+        }
+      },
+      {
+        id: 'default_youtube_rule',
+        name: 'YouTube 强制视频预览',
+        enabled: true,
+        priority: 90,
+        matchType: 'domain',
+        matchValue: 'youtube.com',
+        caseSensitive: false,
+        actions: {
+          skipPreview: false,
+          forceType: 'video-site',
+          previewWidth: 720,
+          previewHeight: 480,
+          disableSecurityCheck: false,
+          autoEmbed: true,
+          autoQuickRead: false
+        }
+      },
+      {
+        id: 'default_bilibili_rule',
+        name: 'Bilibili 强制视频预览',
+        enabled: true,
+        priority: 89,
+        matchType: 'domain',
+        matchValue: 'bilibili.com',
+        caseSensitive: false,
+        actions: {
+          skipPreview: false,
+          forceType: 'video-site',
+          previewWidth: 720,
+          previewHeight: 480,
+          disableSecurityCheck: false,
+          autoEmbed: true,
+          autoQuickRead: false
+        }
+      }
+    ]
   };
 
   chrome.storage.sync.get(defaultSettings, (result) => {

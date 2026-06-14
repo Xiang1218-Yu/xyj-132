@@ -43,6 +43,10 @@
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
           收藏
         </button>
+        <button class="tab-btn" data-tab="rules">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M16.86 14.88l3.06-3.06a1 1 0 000-1.41l-3.06-3.06a1 1 0 00-1.41 0l-3.06 3.06a1 1 0 000 1.41l3.06 3.06a1 1 0 001.41 0zm-1.41-4.47l1.65 1.65-1.65 1.65-1.65-1.65 1.65-1.65zM3 15h5v2H3zM3 11h5v2H3zM3 7h5v2H3zM14.5 3h-5v2h5zM12 5h-2v8h2V5zm0 10h-2v6h2v-6z"/></svg>
+          规则
+        </button>
       </div>
     </div>
 
@@ -493,6 +497,149 @@
             <p class="favorites-empty-desc">在预览时点击收藏按钮或按数字键 2 收藏链接</p>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-rules" style="display:none;">
+      <div class="popup-content">
+        <div class="section">
+          <div class="section-header-with-action">
+            <h2>自定义预览规则</h2>
+            <button class="btn-small-primary" id="addRuleBtn">+ 新建规则</button>
+          </div>
+          <p class="section-desc">定义链接匹配条件和对应的预览行为，规则按优先级从高到低匹配</p>
+        </div>
+
+        <div class="rules-list" id="rulesList">
+          <div class="rules-empty">
+            <svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor"><path d="M16.86 14.88l3.06-3.06a1 1 0 000-1.41l-3.06-3.06a1 1 0 00-1.41 0l-3.06 3.06a1 1 0 000 1.41l3.06 3.06a1 1 0 001.41 0zm-1.41-4.47l1.65 1.65-1.65 1.65-1.65-1.65 1.65-1.65zM3 15h5v2H3zM3 11h5v2H3zM3 7h5v2H3z"/></svg>
+            <p>暂无自定义规则</p>
+            <p class="section-desc">点击"新建规则"创建自定义预览行为</p>
+          </div>
+        </div>
+
+        <div class="rules-editor" id="rulesEditor" style="display:none;">
+          <div class="section">
+            <h3 id="editorTitle">新建规则</h3>
+          </div>
+
+          <div class="section">
+            <h2>规则信息</h2>
+            <div class="form-row">
+              <div class="form-field">
+                <label>规则名称</label>
+                <input type="text" id="ruleName" placeholder="例如：视频网站特殊预览">
+              </div>
+              <div class="form-field form-field-small">
+                <label>优先级</label>
+                <input type="number" id="rulePriority" min="1" max="999" value="50">
+              </div>
+            </div>
+            <label class="toggle-item-inline">
+              <input type="checkbox" id="ruleEnabled" checked>
+              <span class="toggle-slider"></span>
+              <span class="toggle-label">启用此规则</span>
+            </label>
+          </div>
+
+          <div class="section">
+            <h2>匹配条件</h2>
+            <div class="form-row">
+              <div class="form-field">
+                <label>匹配类型</label>
+                <select id="ruleMatchType">
+                  <option value="domain">域名匹配</option>
+                  <option value="suffix">后缀匹配</option>
+                  <option value="keyword">关键词匹配</option>
+                  <option value="regex">正则表达式</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label>匹配值</label>
+                <input type="text" id="ruleMatchValue" placeholder="例如：youtube.com 或 .pdf">
+              </div>
+            </div>
+            <label class="toggle-item-inline">
+              <input type="checkbox" id="ruleCaseSensitive">
+              <span class="toggle-slider"></span>
+              <span class="toggle-label">区分大小写</span>
+            </label>
+            <p class="field-hint" id="matchTypeHint">域名匹配：完全匹配域名或其子域名（如 youtube.com 匹配 m.youtube.com）</p>
+          </div>
+
+          <div class="section">
+            <h2>预览行为</h2>
+            
+            <label class="toggle-item">
+              <input type="checkbox" id="actionSkipPreview">
+              <span class="toggle-slider"></span>
+              <span class="toggle-label">
+                <span class="toggle-title">跳过预览</span>
+                <span class="toggle-desc">匹配的链接不显示预览窗口</span>
+              </span>
+            </label>
+
+            <div class="form-group-block" id="nonSkipActions">
+              <div class="form-row">
+                <div class="form-field">
+                  <label>强制预览类型</label>
+                  <select id="actionForceType">
+                    <option value="">自动检测</option>
+                    <option value="webpage">网页</option>
+                    <option value="image">图片</option>
+                    <option value="video">视频文件</option>
+                    <option value="video-site">视频网站</option>
+                    <option value="audio">音频文件</option>
+                    <option value="audio-site">音频网站</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-field">
+                  <label>自定义宽度 (px)</label>
+                  <input type="number" id="actionWidth" min="300" max="1200" placeholder="留空使用默认">
+                </div>
+                <div class="form-field">
+                  <label>自定义高度 (px)</label>
+                  <input type="number" id="actionHeight" min="200" max="800" placeholder="留空使用默认">
+                </div>
+              </div>
+
+              <label class="toggle-item">
+                <input type="checkbox" id="actionDisableSecurity">
+                <span class="toggle-slider"></span>
+                <span class="toggle-label">
+                  <span class="toggle-title">禁用安全评估</span>
+                  <span class="toggle-desc">匹配的链接不显示安全检测</span>
+                </span>
+              </label>
+
+              <label class="toggle-item">
+                <input type="checkbox" id="actionAutoEmbed">
+                <span class="toggle-slider"></span>
+                <span class="toggle-label">
+                  <span class="toggle-title">自动进入嵌入模式</span>
+                  <span class="toggle-desc">网页预览自动切换到 iframe 嵌入模式</span>
+                </span>
+              </label>
+
+              <label class="toggle-item">
+                <input type="checkbox" id="actionAutoQuickRead">
+                <span class="toggle-slider"></span>
+                <span class="toggle-label">
+                  <span class="toggle-title">自动进入速读模式</span>
+                  <span class="toggle-desc">网页预览自动切换到速读摘要</span>
+                </span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="popup-footer" id="rulesFooter" style="display:none;">
+        <button class="btn-secondary" id="cancelRuleBtn">取消</button>
+        <button class="btn-primary" id="saveRuleBtn">保存规则</button>
       </div>
     </div>
 

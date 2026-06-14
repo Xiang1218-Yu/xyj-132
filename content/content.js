@@ -46,7 +46,8 @@
         { key: '4', action: 'qrcode', label: '生成二维码' },
         { key: '5', action: 'share', label: '分享' }
       ]
-    }
+    },
+    previewRules: []
   };
 
   let settings = { ...DEFAULT_SETTINGS };
@@ -445,6 +446,60 @@
     }
   }
 
+  function matchPreviewRule(url) {
+    if (!settings.previewRules || settings.previewRules.length === 0 || !url) return null;
+
+    try {
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname;
+      const pathname = urlObj.pathname;
+      const fullUrl = url;
+
+      const sortedRules = [...settings.previewRules]
+        .filter(r => r.enabled && r.matchValue)
+        .sort((a, b) => (b.priority || 0) - (a.priority || 0));
+
+      for (const rule of sortedRules) {
+        let matched = false;
+        const matchValue = rule.caseSensitive ? rule.matchValue : rule.matchValue.toLowerCase();
+        const testHostname = rule.caseSensitive ? hostname : hostname.toLowerCase();
+        const testPathname = rule.caseSensitive ? pathname : pathname.toLowerCase();
+        const testUrl = rule.caseSensitive ? fullUrl : fullUrl.toLowerCase();
+
+        switch (rule.matchType) {
+          case 'domain':
+            matched = testHostname === matchValue || testHostname.endsWith('.' + matchValue);
+            break;
+          case 'suffix':
+            matched = testPathname.endsWith(matchValue) || testUrl.endsWith(matchValue);
+            break;
+          case 'keyword':
+            matched = testUrl.includes(matchValue);
+            break;
+          case 'regex':
+            try {
+              const flags = rule.caseSensitive ? '' : 'i';
+              const regex = new RegExp(rule.matchValue, flags);
+              matched = regex.test(fullUrl);
+            } catch (e) {
+              matched = false;
+            }
+            break;
+          default:
+            matched = false;
+        }
+
+        if (matched) {
+          return rule;
+        }
+      }
+    } catch (e) {
+      return null;
+    }
+
+    return null;
+  }
+
   function createPreviewPanel() {
     if (previewPanel) return previewPanel;
 
@@ -596,7 +651,18 @@
     if (isInBlacklist(window.location.href)) return;
 
     const absoluteUrl = getAbsoluteUrl(link.href);
-    const linkType = getLinkType(absoluteUrl);
+    
+    const matchedRule = matchPreviewRule(absoluteUrl);
+    const ruleActions = matchedRule?.actions || null;
+
+    if (ruleActions && ruleActions.skipPreview) {
+      return;
+    }
+
+    let linkType = getLinkType(absoluteUrl);
+    if (ruleActions && ruleActions.forceType) {
+      linkType = ruleActions.forceType;
+    }
 
     const typeEnabled = {
       'video': settings.enableVideoPreview,
@@ -608,13 +674,25 @@
       'unknown': settings.enableWebpagePreview
     };
 
-    if (!typeEnabled[linkType]) return;
+    if (!ruleActions?.forceType && !typeEnabled[linkType]) return;
+
+    let effectiveWidth = settings.previewWidth;
+    let effectiveHeight = settings.previewHeight;
+    if (ruleActions) {
+      if (ruleActions.previewWidth) effectiveWidth = ruleActions.previewWidth;
+      if (ruleActions.previewHeight) effectiveHeight = ruleActions.previewHeight;
+    }
 
     currentLink = absoluteUrl;
     currentLinkTitle = link.textContent?.trim() || link.title || '';
     const panel = createPreviewPanel();
 
+    const origSecurityCheck = settings.enableSecurityCheck;
+    if (ruleActions && ruleActions.disableSecurityCheck) {
+      settings.enableSecurityCheck = false;
+    }
     const secInfo = securityInfo || evaluateUrlSecurity(absoluteUrl);
+    settings.enableSecurityCheck = origSecurityCheck;
 
     const linkText = link.textContent?.trim() || link.title || '';
     panel.querySelector('#qlp-preview-title').textContent = linkText ? 
@@ -638,7 +716,7 @@
 
     applyThemeToPanel(panel);
     applyComponentVisibility(panel);
-    positionPreviewPanel(event, panel);
+    positionPreviewPanel(event, panel, effectiveWidth, effectiveHeight);
     panel.classList.add('qlp-visible');
 
     if (hideTimer) {
@@ -665,10 +743,10 @@
     }
 
     checkFavoriteStatus(absoluteUrl);
-    loadPreviewContent(absoluteUrl, linkType, content, secInfo);
+    loadPreviewContent(absoluteUrl, linkType, content, secInfo, ruleActions);
   }
 
-  function positionPreviewPanel(event, panel) {
+  function positionPreviewPanel(event, panel, width = null, height = null) {
     let triggerX, triggerY, triggerBottom;
 
     if (event && event.target && event.target.getBoundingClientRect) {
@@ -688,8 +766,8 @@
 
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
-    const panelWidth = settings.previewWidth;
-    const panelHeight = settings.previewHeight + 60;
+    const panelWidth = width || settings.previewWidth;
+    const panelHeight = (height || settings.previewHeight) + 60;
 
     let left = triggerX + 15;
     let top = triggerBottom + 10;
@@ -744,7 +822,7 @@
     }
   }
 
-  function loadPreviewContent(url, type, container, securityInfo = null) {
+  function loadPreviewContent(url, type, container, securityInfo = null, ruleActions = null) {
     const securityBadge = securityInfo && settings.enableSecurityCheck ? createSecurityBadge(securityInfo) : '';
     
     switch (type) {
@@ -761,7 +839,7 @@
       case 'audio-site':
       case 'webpage':
       default:
-        loadWebpagePreview(url, container, type, securityBadge);
+        loadWebpagePreview(url, container, type, securityBadge, ruleActions);
         break;
     }
   }
@@ -860,7 +938,7 @@
     container.innerHTML = renderContentWithOrder(contentHtml, securityBadge);
   }
 
-  function loadWebpagePreview(url, container, type, securityBadge = '') {
+  function loadWebpagePreview(url, container, type, securityBadge = '', ruleActions = null) {
     chrome.runtime.sendMessage({ action: 'fetchPageInfo', url: url }, (response) => {
       if (chrome.runtime.lastError) {
         renderFallbackPreview(url, container, type, securityBadge);
@@ -868,7 +946,7 @@
       }
 
       if (response && response.success) {
-        renderRichPreview(url, response.data, container, type, securityBadge);
+        renderRichPreview(url, response.data, container, type, securityBadge, ruleActions);
       } else {
         renderFallbackPreview(url, container, type, securityBadge);
       }
@@ -881,7 +959,7 @@
     return div.innerHTML;
   }
 
-  function renderRichPreview(url, data, container, type, securityBadge = '') {
+  function renderRichPreview(url, data, container, type, securityBadge = '', ruleActions = null) {
     const icon = data.favicon || getFaviconFromUrl(url);
     const image = data.image || '';
     const title = escapeHtml(data.title || url);
@@ -1211,6 +1289,18 @@
         if (infoDiv) infoDiv.style.display = '';
         if (mediaContainer) mediaContainer.style.display = '';
       });
+    }
+
+    if (ruleActions) {
+      if (ruleActions.autoEmbed && toggleBtn && !toggleBtn.classList.contains('qlp-embed-active')) {
+        setTimeout(() => {
+          toggleBtn.click();
+        }, 200);
+      } else if (ruleActions.autoQuickRead && quickreadToggle && !quickreadToggle.classList.contains('qlp-quickread-active')) {
+        setTimeout(() => {
+          quickreadToggle.click();
+        }, 200);
+      }
     }
   }
 

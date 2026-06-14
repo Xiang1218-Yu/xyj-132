@@ -35,8 +35,12 @@ const DEFAULT_SETTINGS = {
       security: true,
       footer: true
     }
-  }
+  },
+  previewRules: []
 };
+
+let allPreviewRules = [];
+let editingRuleId = null;
 
 let currentFilter = 'all';
 let currentSearch = '';
@@ -553,12 +557,16 @@ function switchTab(tabName) {
   document.getElementById('tab-security').style.display = tabName === 'security' ? '' : 'none';
   document.getElementById('tab-history').style.display = tabName === 'history' ? '' : 'none';
   document.getElementById('tab-favorites').style.display = tabName === 'favorites' ? '' : 'none';
+  document.getElementById('tab-rules').style.display = tabName === 'rules' ? '' : 'none';
 
   if (tabName === 'history') {
     loadHistory();
   }
   if (tabName === 'favorites') {
     loadFavorites();
+  }
+  if (tabName === 'rules') {
+    loadPreviewRules();
   }
 }
 
@@ -847,6 +855,271 @@ function init() {
   if (addCatBtn) {
     addCatBtn.addEventListener('click', showAddCategoryDialog);
   }
+
+  const addRuleBtn = document.getElementById('addRuleBtn');
+  if (addRuleBtn) {
+    addRuleBtn.addEventListener('click', () => showRuleEditor());
+  }
+
+  const cancelRuleBtn = document.getElementById('cancelRuleBtn');
+  if (cancelRuleBtn) {
+    cancelRuleBtn.addEventListener('click', hideRuleEditor);
+  }
+
+  const saveRuleBtn = document.getElementById('saveRuleBtn');
+  if (saveRuleBtn) {
+    saveRuleBtn.addEventListener('click', saveCurrentRule);
+  }
+
+  const matchTypeSelect = document.getElementById('ruleMatchType');
+  if (matchTypeSelect) {
+    matchTypeSelect.addEventListener('change', updateMatchTypeHint);
+  }
+
+  const skipPreviewCheckbox = document.getElementById('actionSkipPreview');
+  if (skipPreviewCheckbox) {
+    skipPreviewCheckbox.addEventListener('change', updateNonSkipActionsVisibility);
+  }
+}
+
+function loadPreviewRules() {
+  chrome.storage.sync.get({ previewRules: [] }, (result) => {
+    allPreviewRules = result.previewRules || [];
+    allPreviewRules.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+    renderRulesList();
+  });
+}
+
+function renderRulesList() {
+  const listEl = document.getElementById('rulesList');
+  if (!listEl) return;
+
+  if (allPreviewRules.length === 0) {
+    listEl.innerHTML = `
+      <div class="rules-empty">
+        <svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor"><path d="M16.86 14.88l3.06-3.06a1 1 0 000-1.41l-3.06-3.06a1 1 0 00-1.41 0l-3.06 3.06a1 1 0 000 1.41l3.06 3.06a1 1 0 001.41 0zm-1.41-4.47l1.65 1.65-1.65 1.65-1.65-1.65 1.65-1.65zM3 15h5v2H3zM3 11h5v2H3zM3 7h5v2H3z"/></svg>
+        <p>暂无自定义规则</p>
+        <p class="section-desc">点击"新建规则"创建自定义预览行为</p>
+      </div>
+    `;
+    return;
+  }
+
+  const matchTypeLabels = {
+    'domain': '域名',
+    'suffix': '后缀',
+    'keyword': '关键词',
+    'regex': '正则'
+  };
+
+  listEl.innerHTML = allPreviewRules.map(rule => {
+    const actionBadges = [];
+    if (rule.actions?.skipPreview) actionBadges.push('<span>跳过预览</span>');
+    if (rule.actions?.forceType) {
+      const typeLabels = { webpage: '网页', image: '图片', video: '视频', 'video-site': '视频站', audio: '音频', 'audio-site': '音频站' };
+      actionBadges.push(`<span>强制:${typeLabels[rule.actions.forceType] || rule.actions.forceType}</span>`);
+    }
+    if (rule.actions?.previewWidth || rule.actions?.previewHeight) actionBadges.push('<span>自定义尺寸</span>');
+    if (rule.actions?.disableSecurityCheck) actionBadges.push('<span>跳过安全</span>');
+    if (rule.actions?.autoEmbed) actionBadges.push('<span>自动嵌入</span>');
+    if (rule.actions?.autoQuickRead) actionBadges.push('<span>自动速读</span>');
+
+    return `
+      <div class="rule-item" data-rule-id="${rule.id}">
+        <div class="rule-info">
+          <div class="rule-name">${escapeHtml(rule.name)}</div>
+          <div class="rule-match-info">
+            ${matchTypeLabels[rule.matchType] || rule.matchType}: ${escapeHtml(rule.matchValue)}
+          </div>
+          <div class="rule-actions-list">
+            ${actionBadges.join('')}
+          </div>
+          <div class="rule-meta">
+            <span class="rule-meta-item priority">优先级: ${rule.priority || 50}</span>
+            <span class="rule-meta-item ${rule.enabled ? 'enabled' : 'disabled'}">${rule.enabled ? '已启用' : '已禁用'}</span>
+          </div>
+        </div>
+        <div class="rule-actions">
+          <button class="rule-action-edit" data-rule-edit="${rule.id}" title="编辑规则">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          </button>
+          <button class="rule-action-delete" data-rule-delete="${rule.id}" title="删除规则">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  listEl.querySelectorAll('.rule-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('[data-rule-edit]') || e.target.closest('[data-rule-delete]')) return;
+      const ruleId = item.dataset.ruleId;
+      const rule = allPreviewRules.find(r => r.id === ruleId);
+      if (rule) showRuleEditor(rule);
+    });
+  });
+
+  listEl.querySelectorAll('[data-rule-edit]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const ruleId = btn.dataset.ruleEdit;
+      const rule = allPreviewRules.find(r => r.id === ruleId);
+      if (rule) showRuleEditor(rule);
+    });
+  });
+
+  listEl.querySelectorAll('[data-rule-delete]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const ruleId = btn.dataset.ruleDelete;
+      deletePreviewRule(ruleId);
+    });
+  });
+}
+
+function showRuleEditor(rule = null) {
+  const listEl = document.getElementById('rulesList');
+  const editorEl = document.getElementById('rulesEditor');
+  const footerEl = document.getElementById('rulesFooter');
+  const titleEl = document.getElementById('editorTitle');
+
+  if (listEl) listEl.style.display = 'none';
+  if (editorEl) editorEl.style.display = '';
+  if (footerEl) footerEl.style.display = '';
+
+  if (titleEl) titleEl.textContent = rule ? '编辑规则' : '新建规则';
+
+  editingRuleId = rule ? rule.id : null;
+
+  document.getElementById('ruleName').value = rule?.name || '';
+  document.getElementById('rulePriority').value = rule?.priority ?? 50;
+  document.getElementById('ruleEnabled').checked = rule?.enabled !== false;
+  document.getElementById('ruleMatchType').value = rule?.matchType || 'domain';
+  document.getElementById('ruleMatchValue').value = rule?.matchValue || '';
+  document.getElementById('ruleCaseSensitive').checked = rule?.caseSensitive || false;
+  document.getElementById('actionSkipPreview').checked = rule?.actions?.skipPreview || false;
+  document.getElementById('actionForceType').value = rule?.actions?.forceType || '';
+  document.getElementById('actionWidth').value = rule?.actions?.previewWidth || '';
+  document.getElementById('actionHeight').value = rule?.actions?.previewHeight || '';
+  document.getElementById('actionDisableSecurity').checked = rule?.actions?.disableSecurityCheck || false;
+  document.getElementById('actionAutoEmbed').checked = rule?.actions?.autoEmbed || false;
+  document.getElementById('actionAutoQuickRead').checked = rule?.actions?.autoQuickRead || false;
+
+  updateMatchTypeHint();
+  updateNonSkipActionsVisibility();
+}
+
+function hideRuleEditor() {
+  const listEl = document.getElementById('rulesList');
+  const editorEl = document.getElementById('rulesEditor');
+  const footerEl = document.getElementById('rulesFooter');
+
+  if (listEl) listEl.style.display = '';
+  if (editorEl) editorEl.style.display = 'none';
+  if (footerEl) footerEl.style.display = 'none';
+
+  editingRuleId = null;
+}
+
+function updateMatchTypeHint() {
+  const matchType = document.getElementById('ruleMatchType').value;
+  const hintEl = document.getElementById('matchTypeHint');
+  const hints = {
+    'domain': '域名匹配：完全匹配域名或其子域名（如 youtube.com 匹配 m.youtube.com）',
+    'suffix': '后缀匹配：匹配 URL 路径的后缀（如 .pdf、.jpg、.mp4 等）',
+    'keyword': '关键词匹配：在完整 URL 中搜索关键词（如 /blog/、article 等）',
+    'regex': '正则表达式：使用正则表达式匹配完整 URL（注意转义特殊字符）'
+  };
+  if (hintEl) hintEl.textContent = hints[matchType] || '';
+}
+
+function updateNonSkipActionsVisibility() {
+  const skipChecked = document.getElementById('actionSkipPreview').checked;
+  const nonSkipEl = document.getElementById('nonSkipActions');
+  if (nonSkipEl) {
+    nonSkipEl.style.opacity = skipChecked ? '0.4' : '1';
+    nonSkipEl.style.pointerEvents = skipChecked ? 'none' : '';
+  }
+}
+
+function saveCurrentRule() {
+  const name = document.getElementById('ruleName').value.trim();
+  const matchValue = document.getElementById('ruleMatchValue').value.trim();
+
+  if (!name) {
+    showToast('请输入规则名称');
+    return;
+  }
+  if (!matchValue) {
+    showToast('请输入匹配值');
+    return;
+  }
+
+  const widthVal = document.getElementById('actionWidth').value;
+  const heightVal = document.getElementById('actionHeight').value;
+
+  const ruleData = {
+    name: name,
+    enabled: document.getElementById('ruleEnabled').checked,
+    priority: parseInt(document.getElementById('rulePriority').value, 10) || 50,
+    matchType: document.getElementById('ruleMatchType').value,
+    matchValue: matchValue,
+    caseSensitive: document.getElementById('ruleCaseSensitive').checked,
+    actions: {
+      skipPreview: document.getElementById('actionSkipPreview').checked,
+      forceType: document.getElementById('actionForceType').value || null,
+      previewWidth: widthVal ? parseInt(widthVal, 10) : null,
+      previewHeight: heightVal ? parseInt(heightVal, 10) : null,
+      disableSecurityCheck: document.getElementById('actionDisableSecurity').checked,
+      autoEmbed: document.getElementById('actionAutoEmbed').checked,
+      autoQuickRead: document.getElementById('actionAutoQuickRead').checked
+    }
+  };
+
+  if (editingRuleId) {
+    chrome.storage.sync.get({ previewRules: [] }, (result) => {
+      const rules = result.previewRules || [];
+      const idx = rules.findIndex(r => r.id === editingRuleId);
+      if (idx !== -1) {
+        rules[idx] = { ...rules[idx], ...ruleData };
+        chrome.storage.sync.set({ previewRules: rules }, () => {
+          showToast('规则已更新');
+          hideRuleEditor();
+          loadPreviewRules();
+        });
+      }
+    });
+  } else {
+    chrome.storage.sync.get({ previewRules: [] }, (result) => {
+      const rules = result.previewRules || [];
+      const newRule = {
+        id: 'rule_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+        ...ruleData
+      };
+      rules.push(newRule);
+      chrome.storage.sync.set({ previewRules: rules }, () => {
+        showToast('规则已创建');
+        hideRuleEditor();
+        loadPreviewRules();
+      });
+    });
+  }
+}
+
+function deletePreviewRule(ruleId) {
+  const rule = allPreviewRules.find(r => r.id === ruleId);
+  if (!rule) return;
+
+  if (!confirm(`确定要删除规则"${rule.name}"吗？`)) return;
+
+  chrome.storage.sync.get({ previewRules: [] }, (result) => {
+    const rules = (result.previewRules || []).filter(r => r.id !== ruleId);
+    chrome.storage.sync.set({ previewRules: rules }, () => {
+      showToast('规则已删除');
+      loadPreviewRules();
+    });
+  });
 }
 
 document.addEventListener('DOMContentLoaded', init);
