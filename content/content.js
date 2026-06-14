@@ -97,6 +97,33 @@
     let score = 100;
     const deducted = new Set();
 
+    const categoryMaxDeduction = {
+      phishing: 50,
+      malicious: 25,
+      suspicious: 20,
+      redirect: 15
+    };
+    const categoryDeduction = {
+      phishing: 0,
+      malicious: 0,
+      suspicious: 0,
+      redirect: 0
+    };
+
+    function deductPoints(category, points, risk) {
+      if (categoryDeduction[category] >= categoryMaxDeduction[category]) {
+        return false;
+      }
+      const actualDeduction = Math.min(
+        points,
+        categoryMaxDeduction[category] - categoryDeduction[category]
+      );
+      categoryDeduction[category] += actualDeduction;
+      risks.push(risk);
+      score -= actualDeduction;
+      return true;
+    }
+
     try {
       const urlObj = new URL(url);
       const hostname = urlObj.hostname.toLowerCase();
@@ -108,12 +135,11 @@
           const key = 'phishing-kw-' + keyword;
           if (deducted.has(key)) continue;
           if (pathname.includes(keyword) && !isTrustedDomain(hostname)) {
-            risks.push({
+            deductPoints('phishing', 15, {
               type: 'phishing',
               severity: 'high',
               message: `路径包含可疑关键词: ${keyword}`
             });
-            score -= 15;
             deducted.add(key);
           }
         }
@@ -122,12 +148,11 @@
           const key = 'phishing-login-' + keyword;
           if (deducted.has(key)) continue;
           if (pathname.includes(keyword) && !isTrustedDomain(hostname)) {
-            risks.push({
+            deductPoints('phishing', 20, {
               type: 'phishing',
               severity: 'high',
               message: `疑似登录页面 (${keyword})，请核实网站真伪`
             });
-            score -= 20;
             deducted.add(key);
             break;
           }
@@ -138,12 +163,11 @@
           if (deducted.has(key)) continue;
           const parts = hostname.replace(/^www\./, '').split('.');
           if (parts[0].includes(brand) && !isTrustedDomain(hostname)) {
-            risks.push({
+            deductPoints('phishing', 25, {
               type: 'phishing',
               severity: 'high',
               message: `疑似仿冒品牌: ${brand}`
             });
-            score -= 25;
             deducted.add(key);
             break;
           }
@@ -155,12 +179,11 @@
         if (!deducted.has(tldKey)) {
           for (const tld of MALICIOUS_TLDS) {
             if (hostname.endsWith(tld)) {
-              risks.push({
+              deductPoints('malicious', 15, {
                 type: 'malicious',
                 severity: 'medium',
                 message: `使用可疑顶级域名: ${tld}`
               });
-              score -= 15;
               deducted.add(tldKey);
               break;
             }
@@ -169,12 +192,11 @@
 
         const longDomainKey = 'malicious-longdomain';
         if (!deducted.has(longDomainKey) && hostname.startsWith('www.') && hostname.length > 50) {
-          risks.push({
+          deductPoints('malicious', 10, {
             type: 'malicious',
             severity: 'medium',
             message: '域名过长，可能是伪装的恶意网站'
           });
-          score -= 10;
           deducted.add(longDomainKey);
         }
       }
@@ -184,12 +206,11 @@
         if (!deducted.has(suspiciousKey)) {
           for (const pattern of SUSPICIOUS_PATTERNS) {
             if (pattern.test(url)) {
-              risks.push({
+              deductPoints('suspicious', 5, {
                 type: 'suspicious',
                 severity: 'low',
                 message: 'URL 包含可疑模式'
               });
-              score -= 5;
               deducted.add(suspiciousKey);
               break;
             }
@@ -198,23 +219,21 @@
 
         const httpKey = 'suspicious-http';
         if (!deducted.has(httpKey) && urlObj.protocol === 'http:') {
-          risks.push({
+          deductPoints('suspicious', 10, {
             type: 'suspicious',
             severity: 'low',
             message: '非 HTTPS 连接，数据传输不安全'
           });
-          score -= 10;
           deducted.add(httpKey);
         }
 
         const longQueryKey = 'suspicious-longquery';
         if (!deducted.has(longQueryKey) && search.length > 200) {
-          risks.push({
+          deductPoints('suspicious', 5, {
             type: 'suspicious',
             severity: 'low',
             message: 'URL 参数过长'
           });
-          score -= 5;
           deducted.add(longQueryKey);
         }
       }
@@ -222,12 +241,11 @@
       if (settings.securityRules.checkRedirect) {
         const redirectKey = 'redirect-param';
         if (!deducted.has(redirectKey) && /redirect|url=|link=|href=|go=/i.test(search)) {
-          risks.push({
+          deductPoints('redirect', 15, {
             type: 'redirect',
             severity: 'medium',
             message: '包含跳转参数，可能跳转到外部网站'
           });
-          score -= 15;
           deducted.add(redirectKey);
         }
       }
@@ -245,7 +263,7 @@
 
       score = Math.max(0, Math.min(100, score));
 
-      return { level, score, risks, hostname };
+      return { level, score, risks, hostname, categoryDeduction, categoryMaxDeduction };
     } catch (e) {
       return { level: 'unknown', score: 0, risks: [{ type: 'error', severity: 'low', message: '无法解析 URL' }] };
     }
@@ -654,26 +672,9 @@
     if (!panel || !settings.theme) return;
     
     const theme = settings.theme;
-    const root = document.documentElement;
-    
-    root.style.setProperty('--qlp-primary-color', theme.primaryColor);
-    root.style.setProperty('--qlp-secondary-color', theme.secondaryColor);
-    root.style.setProperty('--qlp-border-radius', theme.borderRadius);
-    root.style.setProperty('--qlp-font-size', theme.fontSize);
-    
-    let shadowValue = '0 20px 60px rgba(0, 0, 0, 0.15), 0 8px 20px rgba(0, 0, 0, 0.1)';
-    if (theme.shadowIntensity === 'low') {
-      shadowValue = '0 8px 24px rgba(0, 0, 0, 0.1), 0 4px 8px rgba(0, 0, 0, 0.06)';
-    } else if (theme.shadowIntensity === 'high') {
-      shadowValue = '0 30px 80px rgba(0, 0, 0, 0.25), 0 12px 30px rgba(0, 0, 0, 0.15)';
-    } else if (theme.shadowIntensity === 'none') {
-      shadowValue = 'none';
-    }
-    root.style.setProperty('--qlp-shadow', shadowValue);
     
     panel.style.borderRadius = theme.borderRadius;
     panel.style.fontSize = theme.fontSize;
-    panel.style.setProperty('box-shadow', shadowValue, 'important');
     
     const header = panel.querySelector('.qlp-preview-header');
     if (header) {
@@ -2128,10 +2129,44 @@
     }
   }
 
+  function deepMerge(target, source) {
+    const result = { ...target };
+    for (const key in source) {
+      if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+        result[key] = deepMerge(target[key] || {}, source[key]);
+      } else {
+        result[key] = source[key];
+      }
+    }
+    return result;
+  }
+
   function loadSettings() {
     chrome.storage.sync.get(DEFAULT_SETTINGS, (result) => {
-      settings = { ...DEFAULT_SETTINGS, ...result };
+      settings = deepMerge(DEFAULT_SETTINGS, result);
+      applyThemeToRoot();
     });
+  }
+
+  function applyThemeToRoot() {
+    if (!settings.theme) return;
+    const theme = settings.theme;
+    const root = document.documentElement;
+    
+    root.style.setProperty('--qlp-primary-color', theme.primaryColor);
+    root.style.setProperty('--qlp-secondary-color', theme.secondaryColor);
+    root.style.setProperty('--qlp-border-radius', theme.borderRadius);
+    root.style.setProperty('--qlp-font-size', theme.fontSize);
+    
+    let shadowValue = '0 20px 60px rgba(0, 0, 0, 0.15), 0 8px 20px rgba(0, 0, 0, 0.1)';
+    if (theme.shadowIntensity === 'low') {
+      shadowValue = '0 8px 24px rgba(0, 0, 0, 0.1), 0 4px 8px rgba(0, 0, 0, 0.06)';
+    } else if (theme.shadowIntensity === 'high') {
+      shadowValue = '0 30px 80px rgba(0, 0, 0, 0.25), 0 12px 30px rgba(0, 0, 0, 0.15)';
+    } else if (theme.shadowIntensity === 'none') {
+      shadowValue = 'none';
+    }
+    root.style.setProperty('--qlp-shadow', shadowValue);
   }
 
   function handleRePreview(url) {
@@ -2170,8 +2205,29 @@
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'sync') {
         for (const key in changes) {
-          settings[key] = changes[key].newValue;
+          if (changes[key].newValue !== undefined) {
+            if (changes[key].newValue && typeof changes[key].newValue === 'object' && !Array.isArray(changes[key].newValue)) {
+              settings[key] = deepMerge(settings[key] || {}, changes[key].newValue);
+            } else {
+              settings[key] = changes[key].newValue;
+            }
+          }
         }
+        applyThemeToRoot();
+        const existingPanel = document.getElementById('qlp-preview-panel');
+        if (existingPanel) {
+          applyThemeToPanel(existingPanel);
+          applyComponentVisibility(existingPanel);
+        }
+        const batchPanel = document.getElementById('qlp-batch-compare-panel');
+        if (batchPanel) {
+          const batchHeader = batchPanel.querySelector('.qlp-compare-header');
+          if (batchHeader) {
+            batchHeader.style.background = `linear-gradient(135deg, ${settings.theme.primaryColor} 0%, ${settings.theme.secondaryColor} 100%)`;
+          }
+        }
+        document.documentElement.style.setProperty('--qlp-primary-color', settings.theme.primaryColor);
+        document.documentElement.style.setProperty('--qlp-secondary-color', settings.theme.secondaryColor);
       }
     });
 

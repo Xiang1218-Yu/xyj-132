@@ -116,94 +116,111 @@ function loadSecuritySettings(result) {
 }
 
 function saveSettings() {
-  const triggerMode = document.querySelector('input[name="triggerMode"]:checked').value;
-  const hoverDelay = parseInt(document.getElementById('hoverDelay').value, 10);
-  const previewWidth = parseInt(document.getElementById('previewWidth').value, 10);
-  const previewHeight = parseInt(document.getElementById('previewHeight').value, 10);
-  
-  const blacklistText = document.getElementById('blacklist').value;
-  const blacklist = blacklistText
-    .split('\n')
-    .map(line => line.trim())
-    .filter(line => line.length > 0);
-  
-  const settings = {
-    triggerMode: triggerMode,
-    hoverDelay: hoverDelay,
-    previewWidth: previewWidth,
-    previewHeight: previewHeight,
-    enableImagePreview: document.getElementById('enableImagePreview').checked,
-    enableVideoPreview: document.getElementById('enableVideoPreview').checked,
-    enableAudioPreview: document.getElementById('enableAudioPreview').checked,
-    enableWebpagePreview: document.getElementById('enableWebpagePreview').checked,
-    blacklist: blacklist
-  };
-  
-  chrome.storage.sync.set(settings, () => {
-    showToast('设置已保存');
+  chrome.storage.sync.get(DEFAULT_SETTINGS, (result) => {
+    const triggerMode = document.querySelector('input[name="triggerMode"]:checked').value;
+    const hoverDelay = parseInt(document.getElementById('hoverDelay').value, 10);
+    const previewWidth = parseInt(document.getElementById('previewWidth').value, 10);
+    const previewHeight = parseInt(document.getElementById('previewHeight').value, 10);
+    
+    const blacklistText = document.getElementById('blacklist').value;
+    const blacklist = blacklistText
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
+    
+    const newSettings = {
+      ...result,
+      triggerMode: triggerMode,
+      hoverDelay: hoverDelay,
+      previewWidth: previewWidth,
+      previewHeight: previewHeight,
+      enableImagePreview: document.getElementById('enableImagePreview').checked,
+      enableVideoPreview: document.getElementById('enableVideoPreview').checked,
+      enableAudioPreview: document.getElementById('enableAudioPreview').checked,
+      enableWebpagePreview: document.getElementById('enableWebpagePreview').checked,
+      blacklist: blacklist
+    };
+    
+    chrome.storage.sync.set(newSettings, () => {
+      showToast('设置已保存');
+    });
   });
 }
 
 function saveBatchSettings() {
-  const batchMode = {
-    enabled: document.getElementById('batchMode_enabled').checked,
-    hotkey: document.getElementById('batchMode_hotkey').value,
-    enableFloatingMarker: document.getElementById('batchMode_enableFloatingMarker').checked,
-    autoShowCompare: document.getElementById('batchMode_autoShowCompare').checked
-  };
+  chrome.storage.sync.get(DEFAULT_SETTINGS, (result) => {
+    const batchMode = {
+      ...result.batchMode,
+      enabled: document.getElementById('batchMode_enabled').checked,
+      hotkey: document.getElementById('batchMode_hotkey').value,
+      enableFloatingMarker: document.getElementById('batchMode_enableFloatingMarker').checked,
+      autoShowCompare: document.getElementById('batchMode_autoShowCompare').checked
+    };
 
-  chrome.storage.sync.set({ batchMode }, () => {
-    showToast('批量预览设置已保存');
+    chrome.storage.sync.set({ ...result, batchMode }, () => {
+      showToast('批量预览设置已保存');
+    });
   });
 }
 
 function saveThemeSettings() {
-  const componentOrder = [];
-  const componentVisibility = {};
-  document.querySelectorAll('.component-item').forEach(item => {
-    const comp = item.dataset.component;
-    componentOrder.push(comp);
-    const toggle = item.querySelector('input[data-component-toggle]');
-    componentVisibility[comp] = toggle.checked;
-  });
+  chrome.storage.sync.get(DEFAULT_SETTINGS, (result) => {
+    const componentOrder = [];
+    const componentVisibility = {};
+    document.querySelectorAll('.component-item').forEach(item => {
+      const comp = item.dataset.component;
+      componentOrder.push(comp);
+      const toggle = item.querySelector('input[data-component-toggle]');
+      componentVisibility[comp] = toggle.checked;
+    });
 
-  const theme = {
-    mode: document.getElementById('theme_mode').value,
-    primaryColor: document.getElementById('theme_primaryColor').value,
-    secondaryColor: document.getElementById('theme_secondaryColor').value,
-    borderRadius: document.getElementById('theme_borderRadius').value,
-    shadowIntensity: document.getElementById('theme_shadowIntensity').value,
-    fontSize: document.getElementById('theme_fontSize').value,
-    componentOrder: componentOrder,
-    componentVisibility: componentVisibility
-  };
+    const theme = {
+      ...result.theme,
+      mode: document.getElementById('theme_mode').value,
+      primaryColor: document.getElementById('theme_primaryColor').value,
+      secondaryColor: document.getElementById('theme_secondaryColor').value,
+      borderRadius: document.getElementById('theme_borderRadius').value,
+      shadowIntensity: document.getElementById('theme_shadowIntensity').value,
+      fontSize: document.getElementById('theme_fontSize').value,
+      componentOrder: componentOrder,
+      componentVisibility: componentVisibility
+    };
 
-  chrome.storage.sync.set({ theme }, () => {
-    showToast('主题设置已保存');
+    chrome.storage.sync.set({ ...result, theme }, () => {
+      showToast('主题设置已保存');
+    });
   });
 }
 
 function saveSecuritySettings() {
-  const settings = {
-    enableSecurityCheck: document.getElementById('enableSecurityCheck').checked,
-    securityRules: {
+  chrome.storage.sync.get(DEFAULT_SETTINGS, (result) => {
+    const securityRules = {
+      ...result.securityRules,
       checkPhishing: document.getElementById('securityRules_checkPhishing').checked,
       checkMalicious: document.getElementById('securityRules_checkMalicious').checked,
       checkSuspicious: document.getElementById('securityRules_checkSuspicious').checked,
       checkRedirect: document.getElementById('securityRules_checkRedirect').checked
-    }
-  };
+    };
 
-  chrome.storage.sync.set(settings, () => {
-    showToast('安全评估设置已保存');
+    const newSettings = {
+      ...result,
+      enableSecurityCheck: document.getElementById('enableSecurityCheck').checked,
+      securityRules: securityRules
+    };
+
+    chrome.storage.sync.set(newSettings, () => {
+      showToast('安全评估设置已保存');
+    });
   });
 }
 
 function resetThemeSettings() {
-  const defaultTheme = DEFAULT_SETTINGS.theme;
-  chrome.storage.sync.set({ theme: defaultTheme }, () => {
-    loadThemeSettings(defaultTheme);
-    showToast('主题已重置为默认');
+  chrome.storage.sync.get(DEFAULT_SETTINGS, (result) => {
+    const defaultTheme = DEFAULT_SETTINGS.theme;
+    chrome.storage.sync.set({ ...result, theme: defaultTheme }, () => {
+      loadThemeSettings(defaultTheme);
+      showToast('主题已重置为默认');
+    });
   });
 }
 
