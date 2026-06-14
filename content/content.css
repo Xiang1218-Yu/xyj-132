@@ -1514,3 +1514,230 @@
     color: #6b7280;
   }
 }
+
+.qlp-favorite-icon {
+  transition: fill 0.2s ease;
+}
+
+.qlp-action-btn.qlp-favorited .qlp-favorite-icon {
+  fill: #ff6b6b !important;
+}
+
+.qlp-preview-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: #f9fafb;
+  border-top: 1px solid #e5e7eb;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.qlp-shortcut-hint {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.qlp-qrcode-panel {
+  position: fixed;
+  z-index: 2147483647;
+  width: 240px;
+  padding: 16px;
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  box-shadow: var(--qlp-shadow);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(0.95);
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
+  pointer-events: none;
+}
+
+.qlp-qrcode-panel.qlp-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+.qlp-qrcode-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.qlp-qrcode-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 0;
+  transition: all 0.2s ease;
+}
+
+.qlp-qrcode-close:hover {
+  background: #f3f4f6;
+  color: #333;
+}
+
+.qlp-qrcode-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  background: #fff;
+  padding: 10px;
+  border-radius: 8px;
+}
+
+.qlp-qrcode-content canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.qlp-qrcode-url {
+  font-size: 11px;
+  color: #6b7280;
+  text-align: center;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.qlp-shortcut-hint-panel {
+  position: fixed;
+  z-index: 2147483646;
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border-radius: 10px;
+  box-shadow: var(--qlp-shadow);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 12px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(5px);
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
+  pointer-events: none;
+}
+
+.qlp-shortcut-hint-panel.qlp-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.qlp-shortcut-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.qlp-shortcut-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #667eea;
+  background: #eef2ff;
+  border-radius: 4px;
+}
+
+.qlp-shortcut-label {
+  color: #6b7280;
+  font-size: 11px;
+}
+
+.qlp-toast {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.9);
+  z-index: 2147483648;
+  padding: 12px 24px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+  border-radius: 8px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
+  pointer-events: none;
+}
+
+.qlp-toast.qlp-toast-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+@media (prefers-color-scheme: dark) {
+  .qlp-qrcode-panel {
+    background: #1a1a2e;
+    border-color: #333;
+    color: #fff;
+  }
+
+  .qlp-qrcode-close {
+    color: #9ca3af;
+  }
+
+  .qlp-qrcode-close:hover {
+    background: #2d2d44;
+    color: #fff;
+  }
+
+  .qlp-qrcode-content {
+    background: #2d2d44;
+  }
+
+  .qlp-qrcode-url {
+    color: #9ca3af;
+  }
+
+  .qlp-shortcut-hint-panel {
+    background: rgba(26, 26, 46, 0.95);
+  }
+
+  .qlp-shortcut-key {
+    background: #3730a3;
+    color: #c7d2fe;
+  }
+
+  .qlp-shortcut-label {
+    color: #9ca3af;
+  }
+
+  .qlp-preview-footer {
+    background: #1f2937;
+    border-top-color: #374151;
+    color: #9ca3af;
+  }
+
+  .qlp-shortcut-hint {
+    color: #6b7280;
+  }
+}

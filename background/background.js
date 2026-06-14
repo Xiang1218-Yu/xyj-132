@@ -548,6 +548,83 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true;
   }
+
+  if (request.action === 'getFavoriteCategories') {
+    getFavoriteCategories((categories) => {
+      sendResponse({ success: true, data: categories });
+    });
+    return true;
+  }
+
+  if (request.action === 'addFavoriteCategory') {
+    addFavoriteCategory(request.name, request.color, (category) => {
+      sendResponse({ success: true, data: category });
+    });
+    return true;
+  }
+
+  if (request.action === 'updateFavoriteCategory') {
+    updateFavoriteCategory(request.categoryId, request.updates, (category) => {
+      sendResponse({ success: !!category, data: category });
+    });
+    return true;
+  }
+
+  if (request.action === 'deleteFavoriteCategory') {
+    deleteFavoriteCategory(request.categoryId, (result) => {
+      sendResponse(result);
+    });
+    return true;
+  }
+
+  if (request.action === 'getFavorites') {
+    getFavorites((favorites) => {
+      sendResponse({ success: true, data: favorites });
+    });
+    return true;
+  }
+
+  if (request.action === 'getFavoritesByCategory') {
+    getFavoritesByCategory(request.categoryId, (favorites) => {
+      sendResponse({ success: true, data: favorites });
+    });
+    return true;
+  }
+
+  if (request.action === 'addFavorite') {
+    addFavorite(request.item, (result) => {
+      sendResponse(result);
+    });
+    return true;
+  }
+
+  if (request.action === 'updateFavorite') {
+    updateFavorite(request.favoriteId, request.updates, (result) => {
+      sendResponse(result);
+    });
+    return true;
+  }
+
+  if (request.action === 'deleteFavorite') {
+    deleteFavorite(request.favoriteId, (result) => {
+      sendResponse(result);
+    });
+    return true;
+  }
+
+  if (request.action === 'isFavorite') {
+    isFavorite(request.url, (exists) => {
+      sendResponse({ success: true, data: exists });
+    });
+    return true;
+  }
+
+  if (request.action === 'searchFavorites') {
+    searchFavorites(request.query, (favorites) => {
+      sendResponse({ success: true, data: favorites });
+    });
+    return true;
+  }
 });
 
 async function fetchPageSnapshot(url) {
@@ -659,6 +736,176 @@ function processHtmlForSnapshot(html, baseUrl) {
   }
 }
 
+const FAVORITES_STORAGE_KEY = 'favorites';
+const FAVORITE_CATEGORIES_KEY = 'favoriteCategories';
+const DEFAULT_CATEGORY_ID = 'default';
+
+function initFavoritesStorage() {
+  chrome.storage.local.get({ [FAVORITES_STORAGE_KEY]: [], [FAVORITE_CATEGORIES_KEY]: [] }, (result) => {
+    let categories = result[FAVORITE_CATEGORIES_KEY];
+    if (!categories || categories.length === 0) {
+      categories = [
+        { id: DEFAULT_CATEGORY_ID, name: '默认收藏', color: '#667eea', createdAt: Date.now() }
+      ];
+      chrome.storage.local.set({ [FAVORITE_CATEGORIES_KEY]: categories });
+    }
+  });
+}
+
+function getFavoriteCategories(callback) {
+  chrome.storage.local.get({ [FAVORITE_CATEGORIES_KEY]: [] }, (result) => {
+    callback(result[FAVORITE_CATEGORIES_KEY] || []);
+  });
+}
+
+function addFavoriteCategory(name, color, callback) {
+  getFavoriteCategories((categories) => {
+    const newCategory = {
+      id: 'cat_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+      name: name || '新建分类',
+      color: color || '#667eea',
+      createdAt: Date.now()
+    };
+    categories.push(newCategory);
+    chrome.storage.local.set({ [FAVORITE_CATEGORIES_KEY]: categories }, () => {
+      callback && callback(newCategory);
+    });
+  });
+}
+
+function updateFavoriteCategory(categoryId, updates, callback) {
+  getFavoriteCategories((categories) => {
+    const idx = categories.findIndex(c => c.id === categoryId);
+    if (idx !== -1) {
+      categories[idx] = { ...categories[idx], ...updates };
+      chrome.storage.local.set({ [FAVORITE_CATEGORIES_KEY]: categories }, () => {
+        callback && callback(categories[idx]);
+      });
+    } else {
+      callback && callback(null);
+    }
+  });
+}
+
+function deleteFavoriteCategory(categoryId, callback) {
+  if (categoryId === DEFAULT_CATEGORY_ID) {
+    callback && callback({ success: false, error: '不能删除默认分类' });
+    return;
+  }
+  
+  getFavoriteCategories((categories) => {
+    const filtered = categories.filter(c => c.id !== categoryId);
+    chrome.storage.local.set({ [FAVORITE_CATEGORIES_KEY]: filtered }, () => {
+      getFavorites((favorites) => {
+        const updatedFavorites = favorites.map(f => {
+          if (f.categoryId === categoryId) {
+            return { ...f, categoryId: DEFAULT_CATEGORY_ID };
+          }
+          return f;
+        });
+        chrome.storage.local.set({ [FAVORITES_STORAGE_KEY]: updatedFavorites }, () => {
+          callback && callback({ success: true });
+        });
+      });
+    });
+  });
+}
+
+function getFavorites(callback) {
+  chrome.storage.local.get({ [FAVORITES_STORAGE_KEY]: [] }, (result) => {
+    callback(result[FAVORITES_STORAGE_KEY] || []);
+  });
+}
+
+function getFavoritesByCategory(categoryId, callback) {
+  getFavorites((favorites) => {
+    if (categoryId === 'all') {
+      callback(favorites);
+    } else {
+      callback(favorites.filter(f => f.categoryId === categoryId));
+    }
+  });
+}
+
+function addFavorite(item, callback) {
+  getFavorites((favorites) => {
+    const existingIdx = favorites.findIndex(f => f.url === item.url);
+    if (existingIdx !== -1) {
+      callback && callback({ success: false, error: '该链接已收藏', item: favorites[existingIdx] });
+      return;
+    }
+
+    const newFavorite = {
+      id: 'fav_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+      url: item.url,
+      title: item.title || item.url,
+      description: item.description || '',
+      image: item.image || '',
+      favicon: item.favicon || '',
+      type: item.type || 'webpage',
+      siteName: item.siteName || '',
+      categoryId: item.categoryId || DEFAULT_CATEGORY_ID,
+      notes: item.notes || '',
+      security: item.security || null,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+
+    favorites.unshift(newFavorite);
+    chrome.storage.local.set({ [FAVORITES_STORAGE_KEY]: favorites }, () => {
+      callback && callback({ success: true, item: newFavorite });
+    });
+  });
+}
+
+function updateFavorite(favoriteId, updates, callback) {
+  getFavorites((favorites) => {
+    const idx = favorites.findIndex(f => f.id === favoriteId);
+    if (idx !== -1) {
+      favorites[idx] = { ...favorites[idx], ...updates, updatedAt: Date.now() };
+      chrome.storage.local.set({ [FAVORITES_STORAGE_KEY]: favorites }, () => {
+        callback && callback({ success: true, item: favorites[idx] });
+      });
+    } else {
+      callback && callback({ success: false, error: '收藏不存在' });
+    }
+  });
+}
+
+function deleteFavorite(favoriteId, callback) {
+  getFavorites((favorites) => {
+    const filtered = favorites.filter(f => f.id !== favoriteId);
+    chrome.storage.local.set({ [FAVORITES_STORAGE_KEY]: filtered }, () => {
+      callback && callback({ success: true, count: filtered.length });
+    });
+  });
+}
+
+function isFavorite(url, callback) {
+  getFavorites((favorites) => {
+    const exists = favorites.some(f => f.url === url);
+    callback(exists);
+  });
+}
+
+function searchFavorites(query, callback) {
+  getFavorites((favorites) => {
+    if (!query || query.trim() === '') {
+      callback(favorites);
+      return;
+    }
+    const q = query.toLowerCase();
+    const results = favorites.filter(f => 
+      (f.title || '').toLowerCase().includes(q) ||
+      (f.url || '').toLowerCase().includes(q) ||
+      (f.description || '').toLowerCase().includes(q) ||
+      (f.siteName || '').toLowerCase().includes(q) ||
+      (f.notes || '').toLowerCase().includes(q)
+    );
+    callback(results);
+  });
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   const defaultSettings = {
     triggerMode: 'hover',
@@ -697,10 +944,22 @@ chrome.runtime.onInstalled.addListener(() => {
         security: true,
         footer: true
       }
+    },
+    shortcuts: {
+      enabled: true,
+      actions: [
+        { key: '1', action: 'copy', label: '复制链接' },
+        { key: '2', action: 'favorite', label: '收藏链接' },
+        { key: '3', action: 'openNewTab', label: '新标签打开' },
+        { key: '4', action: 'qrcode', label: '生成二维码' },
+        { key: '5', action: 'share', label: '分享' }
+      ]
     }
   };
 
   chrome.storage.sync.get(defaultSettings, (result) => {
     chrome.storage.sync.set({ ...defaultSettings, ...result });
   });
+
+  initFavoritesStorage();
 });

@@ -36,6 +36,16 @@
       shadowIntensity: 'medium',
       fontSize: '14px',
       componentOrder: ['header', 'content', 'footer', 'security']
+    },
+    shortcuts: {
+      enabled: true,
+      actions: [
+        { key: '1', action: 'copy', label: '复制链接' },
+        { key: '2', action: 'favorite', label: '收藏链接' },
+        { key: '3', action: 'openNewTab', label: '新标签打开' },
+        { key: '4', action: 'qrcode', label: '生成二维码' },
+        { key: '5', action: 'share', label: '分享' }
+      ]
     }
   };
 
@@ -44,11 +54,16 @@
   let hideTimer = null;
   let previewPanel = null;
   let currentLink = null;
+  let currentLinkTitle = '';
+  let currentLinkData = null;
   let isPanelHovered = false;
   let isBatchModeActive = false;
   let batchCollectedLinks = [];
   let batchComparePanel = null;
   let linkMarkerElements = new Map();
+  let qrcodePanel = null;
+  let shortcutHintPanel = null;
+  let isFavoriteCurrent = false;
 
   const NO_EMBED_DOMAINS = [
   ];
@@ -440,7 +455,22 @@
       <div class="qlp-preview-header">
         <div class="qlp-preview-title" id="qlp-preview-title">加载中...</div>
         <div class="qlp-preview-actions">
-          <a class="qlp-action-btn" id="qlp-open-new-tab" title="在新标签页打开" target="_blank" rel="noopener noreferrer">
+          <button class="qlp-action-btn" id="qlp-favorite-btn" title="收藏 (2)">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" class="qlp-favorite-icon">
+              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+            </svg>
+          </button>
+          <button class="qlp-action-btn" id="qlp-qrcode-btn" title="二维码 (4)">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <path d="M3 11h8V3H3v8zm2-6h4v4H5V5zM3 21h8v-8H3v8zm2-6h4v4H5v-4zM13 3v8h8V3h-8zm6 6h-4V5h4v4zM13 13h2v2h-2zM15 15h2v2h-2zM17 13h2v2h-2zM19 15h2v2h-2zM13 17h2v2h-2zM15 19h2v2h-2zM17 17h2v2h-2zM19 19h2v2h-2zM21 21h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10h-2v2h2v2z"/>
+            </svg>
+          </button>
+          <button class="qlp-action-btn" id="qlp-copy-btn" title="复制链接 (1)">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+            </svg>
+          </button>
+          <a class="qlp-action-btn" id="qlp-open-new-tab" title="在新标签页打开 (3)" target="_blank" rel="noopener noreferrer">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
               <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>
             </svg>
@@ -460,6 +490,7 @@
       </div>
       <div class="qlp-preview-footer" id="qlp-preview-footer">
         <span class="qlp-preview-url" id="qlp-preview-url"></span>
+        <span class="qlp-shortcut-hint">按数字键快捷操作</span>
       </div>
     `;
 
@@ -475,6 +506,18 @@
         e.currentTarget.href = currentLink;
       }
     });
+    panel.querySelector('#qlp-copy-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyCurrentLink();
+    });
+    panel.querySelector('#qlp-favorite-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleFavoriteCurrent();
+    });
+    panel.querySelector('#qlp-qrcode-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleQrcodePanel();
+    });
 
     panel.addEventListener('mouseenter', () => {
       isPanelHovered = true;
@@ -482,10 +525,12 @@
         clearTimeout(hideTimer);
         hideTimer = null;
       }
+      showShortcutHint();
     });
 
     panel.addEventListener('mouseleave', () => {
       isPanelHovered = false;
+      hideShortcutHint();
       if (settings.triggerMode === 'hover') {
         scheduleHide();
       }
@@ -566,6 +611,7 @@
     if (!typeEnabled[linkType]) return;
 
     currentLink = absoluteUrl;
+    currentLinkTitle = link.textContent?.trim() || link.title || '';
     const panel = createPreviewPanel();
 
     const secInfo = securityInfo || evaluateUrlSecurity(absoluteUrl);
@@ -602,19 +648,23 @@
 
     try {
       const hostname = new URL(absoluteUrl).hostname;
+      currentLinkData = {
+        url: absoluteUrl,
+        title: linkText || hostname,
+        type: linkType,
+        favicon: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=32`,
+        siteName: hostname,
+        security: secInfo
+      };
       chrome.runtime.sendMessage({
         action: 'addPreviewHistory',
-        item: {
-          url: absoluteUrl,
-          title: linkText || hostname,
-          type: linkType,
-          favicon: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=32`,
-          siteName: hostname,
-          security: secInfo
-        }
+        item: currentLinkData
       });
-    } catch (e) {}
+    } catch (e) {
+      currentLinkData = { url: absoluteUrl, title: linkText || absoluteUrl, type: linkType };
+    }
 
+    checkFavoriteStatus(absoluteUrl);
     loadPreviewContent(absoluteUrl, linkType, content, secInfo);
   }
 
@@ -1567,6 +1617,9 @@
     if (previewPanel) {
       previewPanel.classList.remove('qlp-visible');
       currentLink = null;
+      currentLinkTitle = '';
+      currentLinkData = null;
+      isFavoriteCurrent = false;
       isPanelHovered = false;
       const content = previewPanel.querySelector('#qlp-preview-content');
       if (content) {
@@ -1578,6 +1631,8 @@
         iframes.forEach(f => { f.src = 'about:blank'; });
       }
     }
+    hideQrcodePanel();
+    hideShortcutHint();
   }
 
   function handleLinkHover(event) {
@@ -1648,8 +1703,30 @@
   function handleKeyDown(event) {
     if (event.key === 'Escape') {
       hidePreview();
+      hideQrcodePanel();
       if (isBatchModeActive) {
         cancelBatchMode();
+      }
+      return;
+    }
+
+    if (currentLink && settings.shortcuts && settings.shortcuts.enabled && !isBatchModeActive) {
+      const target = event.target;
+      const isInputFocused = target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.contentEditable === 'true' ||
+        target.tagName === 'SELECT'
+      );
+      
+      if (!isInputFocused) {
+        const action = settings.shortcuts.actions.find(a => a.key === event.key);
+        if (action) {
+          event.preventDefault();
+          event.stopPropagation();
+          executeShortcutAction(action.action);
+          return;
+        }
       }
     }
     
@@ -2174,6 +2251,363 @@
     const fakeLink = { href: url, textContent: '', title: '' };
     const fakeEvent = { clientX: window.innerWidth / 2, clientY: 100, target: { getBoundingClientRect: () => ({ left: window.innerWidth / 2, top: 50, bottom: 70 }) } };
     showPreview(fakeLink, fakeEvent);
+  }
+
+  function executeShortcutAction(action) {
+    if (!currentLink) return;
+    switch (action) {
+      case 'copy':
+        copyCurrentLink();
+        break;
+      case 'favorite':
+        toggleFavoriteCurrent();
+        break;
+      case 'openNewTab':
+        window.open(currentLink, '_blank');
+        break;
+      case 'qrcode':
+        toggleQrcodePanel();
+        break;
+      case 'share':
+        if (navigator.share) {
+          navigator.share({
+            title: currentLinkTitle || currentLink,
+            url: currentLink
+          }).catch(() => {});
+        } else {
+          copyCurrentLink();
+        }
+        break;
+    }
+  }
+
+  function copyCurrentLink() {
+    if (!currentLink) return;
+    navigator.clipboard.writeText(currentLink).then(() => {
+      showToast('链接已复制');
+    }).catch(() => {
+      const textarea = document.createElement('textarea');
+      textarea.value = currentLink;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        showToast('链接已复制');
+      } catch (e) {
+        showToast('复制失败');
+      }
+      document.body.removeChild(textarea);
+    });
+  }
+
+  function checkFavoriteStatus(url) {
+    if (!chrome?.runtime) {
+      isFavoriteCurrent = false;
+      updateFavoriteButtonState();
+      return;
+    }
+    chrome.runtime.sendMessage({ action: 'isFavorite', url: url }, (response) => {
+      if (response && response.success) {
+        isFavoriteCurrent = response.isFavorite;
+        updateFavoriteButtonState();
+      }
+    });
+  }
+
+  function updateFavoriteButtonState() {
+    if (!previewPanel) return;
+    const btn = previewPanel.querySelector('#qlp-favorite-btn');
+    const icon = btn?.querySelector('.qlp-favorite-icon');
+    if (btn && icon) {
+      if (isFavoriteCurrent) {
+        btn.classList.add('qlp-favorited');
+        icon.style.fill = '#ff6b6b';
+      } else {
+        btn.classList.remove('qlp-favorited');
+        icon.style.fill = 'currentColor';
+      }
+    }
+  }
+
+  function toggleFavoriteCurrent() {
+    if (!currentLink || !chrome?.runtime) return;
+    if (isFavoriteCurrent) {
+      chrome.runtime.sendMessage({ action: 'getFavorites' }, (response) => {
+        if (response && response.success && response.favorites) {
+          const fav = response.favorites.find(f => f.url === currentLink);
+          if (fav) {
+            chrome.runtime.sendMessage({ action: 'deleteFavorite', favoriteId: fav.id }, (resp) => {
+              if (resp && resp.success) {
+                isFavoriteCurrent = false;
+                updateFavoriteButtonState();
+                showToast('已取消收藏');
+              }
+            });
+          }
+        }
+      });
+    } else {
+      const item = {
+        url: currentLink,
+        title: currentLinkTitle || currentLinkData?.title || currentLink,
+        description: '',
+        image: '',
+        favicon: currentLinkData?.favicon || '',
+        type: currentLinkData?.type || 'webpage',
+        siteName: currentLinkData?.siteName || '',
+        categoryId: 'default',
+        notes: '',
+        security: currentLinkData?.security || null
+      };
+      chrome.runtime.sendMessage({ action: 'addFavorite', item: item }, (response) => {
+        if (response && response.success) {
+          isFavoriteCurrent = true;
+          updateFavoriteButtonState();
+          showToast('已收藏');
+        } else if (response && response.error === 'duplicate') {
+          isFavoriteCurrent = true;
+          updateFavoriteButtonState();
+          showToast('已收藏');
+        }
+      });
+    }
+  }
+
+  function toggleQrcodePanel() {
+    if (qrcodePanel && qrcodePanel.classList.contains('qlp-visible')) {
+      hideQrcodePanel();
+    } else {
+      showQrcodePanel();
+    }
+  }
+
+  function showQrcodePanel() {
+    if (!currentLink) return;
+    if (!qrcodePanel) {
+      qrcodePanel = document.createElement('div');
+      qrcodePanel.className = 'qlp-qrcode-panel';
+      qrcodePanel.id = 'qlp-qrcode-panel';
+      qrcodePanel.innerHTML = `
+        <div class="qlp-qrcode-header">
+          <span>链接二维码</span>
+          <button class="qlp-qrcode-close" id="qlp-qrcode-close">×</button>
+        </div>
+        <div class="qlp-qrcode-content" id="qlp-qrcode-content"></div>
+        <div class="qlp-qrcode-url" id="qlp-qrcode-url"></div>
+      `;
+      document.body.appendChild(qrcodePanel);
+      qrcodePanel.querySelector('#qlp-qrcode-close').addEventListener('click', (e) => {
+        e.stopPropagation();
+        hideQrcodePanel();
+      });
+      qrcodePanel.addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
+    }
+
+    const qrContent = qrcodePanel.querySelector('#qlp-qrcode-content');
+    const qrUrl = qrcodePanel.querySelector('#qlp-qrcode-url');
+    qrContent.innerHTML = '';
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = 200;
+    canvas.height = 200;
+    generateQRCode(canvas, currentLink);
+    qrContent.appendChild(canvas);
+    
+    qrUrl.textContent = currentLink.length > 40 ? currentLink.slice(0, 40) + '...' : currentLink;
+    qrUrl.title = currentLink;
+
+    applyThemeToQrcodePanel();
+
+    if (previewPanel && previewPanel.classList.contains('qlp-visible')) {
+      const panelRect = previewPanel.getBoundingClientRect();
+      let left = panelRect.right + 10;
+      let top = panelRect.top;
+      if (left + 240 > window.innerWidth - 10) {
+        left = panelRect.left - 250;
+      }
+      if (top + 280 > window.innerHeight - 10) {
+        top = window.innerHeight - 290;
+      }
+      if (left < 10) left = 10;
+      if (top < 10) top = 10;
+      qrcodePanel.style.left = left + 'px';
+      qrcodePanel.style.top = top + 'px';
+    } else {
+      qrcodePanel.style.left = (window.innerWidth - 240) / 2 + 'px';
+      qrcodePanel.style.top = (window.innerHeight - 280) / 2 + 'px';
+    }
+
+    qrcodePanel.classList.add('qlp-visible');
+  }
+
+  function applyThemeToQrcodePanel() {
+    if (!qrcodePanel || !settings.theme) return;
+    const theme = settings.theme;
+    const isDark = theme.mode === 'dark' || 
+      (theme.mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if (isDark) {
+      qrcodePanel.style.background = '#1a1a2e';
+      qrcodePanel.style.color = '#fff';
+      qrcodePanel.style.border = '1px solid #333';
+    } else {
+      qrcodePanel.style.background = '#fff';
+      qrcodePanel.style.color = '#333';
+      qrcodePanel.style.border = '1px solid #e0e0e0';
+    }
+    qrcodePanel.style.borderRadius = theme.borderRadius;
+    qrcodePanel.style.boxShadow = 'var(--qlp-shadow)';
+  }
+
+  function hideQrcodePanel() {
+    if (qrcodePanel) {
+      qrcodePanel.classList.remove('qlp-visible');
+    }
+  }
+
+  function generateQRCode(canvas, text) {
+    const ctx = canvas.getContext('2d');
+    const size = 200;
+    const modules = 25;
+    const moduleSize = size / modules;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = '#000000';
+
+    function isDark(row, col) {
+      if (row < 0 || row >= modules || col < 0 || col >= modules) return false;
+      
+      if ((row < 7 && col < 7) ||
+          (row < 7 && col >= modules - 7) ||
+          (row >= modules - 7 && col < 7)) {
+        if (row < 7 && col < 7) {
+          if (row === 0 || row === 6 || col === 0 || col === 6) return true;
+          if (row >= 2 && row <= 4 && col >= 2 && col <= 4) return row === 2 || row === 4 || col === 2 || col === 4;
+          return false;
+        }
+        if (row < 7 && col >= modules - 7) {
+          const c = col - (modules - 7);
+          if (row === 0 || row === 6 || c === 0 || c === 6) return true;
+          if (row >= 2 && row <= 4 && c >= 2 && c <= 4) return row === 2 || row === 4 || c === 2 || c === 4;
+          return false;
+        }
+        if (row >= modules - 7 && col < 7) {
+          const r = row - (modules - 7);
+          if (r === 0 || r === 6 || col === 0 || col === 6) return true;
+          if (r >= 2 && r <= 4 && col >= 2 && col <= 4) return r === 2 || r === 4 || col === 2 || col === 4;
+          return false;
+        }
+      }
+
+      if (row === 6 || col === 6) return true;
+      if (row === modules - 7 || col === modules - 7) return true;
+
+      let hash = 0;
+      const str = text + row + ',' + col;
+      for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;
+      }
+      return Math.abs(hash) % 3 === 0;
+    }
+
+    for (let row = 0; row < modules; row++) {
+      for (let col = 0; col < modules; col++) {
+        if (isDark(row, col)) {
+          ctx.fillRect(col * moduleSize, row * moduleSize, moduleSize, moduleSize);
+        }
+      }
+    }
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(7 * moduleSize, 7 * moduleSize, 11 * moduleSize, 11 * moduleSize);
+    
+    ctx.fillStyle = '#333';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('QR', size / 2, size / 2 - 5);
+    ctx.font = '8px sans-serif';
+    ctx.fillText('预览', size / 2, size / 2 + 7);
+  }
+
+  function showShortcutHint() {
+    if (!settings.shortcuts || !settings.shortcuts.enabled) return;
+    if (!previewPanel) return;
+    
+    if (!shortcutHintPanel) {
+      shortcutHintPanel = document.createElement('div');
+      shortcutHintPanel.className = 'qlp-shortcut-hint-panel';
+      shortcutHintPanel.id = 'qlp-shortcut-hint-panel';
+      document.body.appendChild(shortcutHintPanel);
+    }
+
+    const actions = settings.shortcuts.actions;
+    shortcutHintPanel.innerHTML = actions.map(a => 
+      `<div class="qlp-shortcut-item">
+        <span class="qlp-shortcut-key">${a.key}</span>
+        <span class="qlp-shortcut-label">${a.label}</span>
+      </div>`
+    ).join('');
+
+    applyThemeToShortcutPanel();
+
+    const panelRect = previewPanel.getBoundingClientRect();
+    let left = panelRect.left;
+    let top = panelRect.bottom + 5;
+    if (top + 60 > window.innerHeight - 10) {
+      top = panelRect.top - 60;
+    }
+    shortcutHintPanel.style.left = left + 'px';
+    shortcutHintPanel.style.top = top + 'px';
+
+    shortcutHintPanel.classList.add('qlp-visible');
+  }
+
+  function applyThemeToShortcutPanel() {
+    if (!shortcutHintPanel || !settings.theme) return;
+    const theme = settings.theme;
+    const isDark = theme.mode === 'dark' || 
+      (theme.mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if (isDark) {
+      shortcutHintPanel.style.background = 'rgba(26, 26, 46, 0.95)';
+      shortcutHintPanel.style.color = '#fff';
+    } else {
+      shortcutHintPanel.style.background = 'rgba(255, 255, 255, 0.95)';
+      shortcutHintPanel.style.color = '#333';
+    }
+    shortcutHintPanel.style.borderRadius = theme.borderRadius;
+    shortcutHintPanel.style.boxShadow = 'var(--qlp-shadow)';
+  }
+
+  function hideShortcutHint() {
+    if (shortcutHintPanel) {
+      shortcutHintPanel.classList.remove('qlp-visible');
+    }
+  }
+
+  function showToast(message) {
+    const toast = document.createElement('div');
+    toast.className = 'qlp-toast';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    requestAnimationFrame(() => {
+      toast.classList.add('qlp-toast-visible');
+    });
+
+    setTimeout(() => {
+      toast.classList.remove('qlp-toast-visible');
+      setTimeout(() => {
+        if (toast.parentNode) {
+          toast.parentNode.removeChild(toast);
+        }
+      }, 300);
+    }, 1500);
   }
 
   function init() {

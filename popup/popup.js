@@ -42,6 +42,209 @@ let currentFilter = 'all';
 let currentSearch = '';
 let allHistory = [];
 
+let currentCategoryId = 'default';
+let currentFavoriteSearch = '';
+let allFavorites = [];
+let allCategories = [];
+
+function loadFavorites() {
+  chrome.runtime.sendMessage({ action: 'getFavoriteCategories' }, (resp) => {
+    if (resp && resp.success) {
+      allCategories = resp.categories || [];
+      renderCategories();
+    }
+  });
+  chrome.runtime.sendMessage({ action: 'getFavorites' }, (resp) => {
+    if (resp && resp.success) {
+      allFavorites = resp.favorites || [];
+      filterAndRenderFavorites();
+    }
+  });
+}
+
+function renderCategories() {
+  const list = document.getElementById('categoryList');
+  if (!list) return;
+  
+  list.innerHTML = '';
+  
+  const allItem = document.createElement('div');
+  allItem.className = `fav-category-item ${currentCategoryId === 'all' ? 'active' : ''}`;
+  allItem.dataset.id = 'all';
+  const totalCount = allFavorites.length;
+  allItem.innerHTML = `
+    <span class="fav-cat-icon">📁</span>
+    <span class="fav-cat-name">全部收藏</span>
+    <span class="fav-cat-count">${totalCount}</span>
+  `;
+  allItem.addEventListener('click', () => {
+    currentCategoryId = 'all';
+    renderCategories();
+    filterAndRenderFavorites();
+  });
+  list.appendChild(allItem);
+  
+  allCategories.forEach(cat => {
+    const item = document.createElement('div');
+    item.className = `fav-category-item ${currentCategoryId === cat.id ? 'active' : ''}`;
+    item.dataset.id = cat.id;
+    const count = allFavorites.filter(f => f.categoryId === cat.id).length;
+    item.innerHTML = `
+      <span class="fav-cat-icon" style="color:${cat.color || '#667eea'}">●</span>
+      <span class="fav-cat-name">${cat.name}</span>
+      <span class="fav-cat-count">${count}</span>
+    `;
+    item.addEventListener('click', () => {
+      currentCategoryId = cat.id;
+      renderCategories();
+      filterAndRenderFavorites();
+    });
+    
+    if (cat.id !== 'default') {
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'fav-cat-delete';
+      deleteBtn.textContent = '×';
+      deleteBtn.title = '删除分类';
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm(`确定要删除分类"${cat.name}"吗？该分类下的收藏会移动到默认分类。`)) {
+          chrome.runtime.sendMessage({ action: 'deleteFavoriteCategory', categoryId: cat.id }, (resp) => {
+            if (resp && resp.success) {
+              if (currentCategoryId === cat.id) {
+                currentCategoryId = 'default';
+              }
+              loadFavorites();
+              showToast('分类已删除');
+            }
+          });
+        }
+      });
+      item.appendChild(deleteBtn);
+    }
+    
+    list.appendChild(item);
+  });
+}
+
+function filterAndRenderFavorites() {
+  let filtered = allFavorites;
+  
+  if (currentCategoryId !== 'all') {
+    filtered = filtered.filter(f => f.categoryId === currentCategoryId);
+  }
+  
+  if (currentFavoriteSearch) {
+    const query = currentFavoriteSearch.toLowerCase();
+    filtered = filtered.filter(f => 
+      f.title?.toLowerCase().includes(query) ||
+      f.url?.toLowerCase().includes(query) ||
+      f.description?.toLowerCase().includes(query) ||
+      f.siteName?.toLowerCase().includes(query)
+    );
+  }
+  
+  const countEl = document.getElementById('favoritesCount');
+  if (countEl) {
+    countEl.textContent = `${filtered.length} 条收藏`;
+  }
+  
+  renderFavoritesList(filtered);
+  renderCategories();
+}
+
+function renderFavoritesList(favorites) {
+  const list = document.getElementById('favoritesList');
+  if (!list) return;
+  
+  if (favorites.length === 0) {
+    list.innerHTML = `
+      <div class="favorites-empty">
+        <svg viewBox="0 0 24 24" width="40" height="40" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+        <p>暂无收藏</p>
+        <p class="favorites-empty-desc">在预览时点击收藏按钮或按数字键 2 收藏链接</p>
+      </div>
+    `;
+    return;
+  }
+  
+  list.innerHTML = '';
+  const typeIcons = {
+    webpage: '🌐',
+    video: '▶️',
+    audio: '🎵',
+    image: '🖼️',
+    'video-site': '▶️',
+    'audio-site': '🎵',
+    unknown: '🔗'
+  };
+  
+  favorites.forEach(fav => {
+    const item = document.createElement('div');
+    item.className = 'favorite-item';
+    const cat = allCategories.find(c => c.id === fav.categoryId);
+    const date = new Date(fav.createdAt || Date.now()).toLocaleDateString('zh-CN');
+    
+    item.innerHTML = `
+      <div class="favorite-icon">${typeIcons[fav.type] || '🔗'}</div>
+      <div class="favorite-info">
+        <div class="favorite-title">${fav.title || fav.url}</div>
+        <div class="favorite-url">${fav.url}</div>
+        <div class="favorite-meta">
+          ${cat ? `<span class="fav-cat-badge" style="background:${cat.color}15;color:${cat.color}">${cat.name}</span>` : ''}
+          <span class="favorite-date">${date}</span>
+        </div>
+      </div>
+      <div class="favorite-actions">
+        <button class="fav-action-btn" title="打开" data-action="open">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+        </button>
+        <button class="fav-action-btn" title="删除" data-action="delete">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        </button>
+      </div>
+    `;
+    
+    item.querySelector('[data-action="open"]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      chrome.tabs.create({ url: fav.url });
+    });
+    
+    item.querySelector('[data-action="delete"]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (confirm('确定要删除这个收藏吗？')) {
+        chrome.runtime.sendMessage({ action: 'deleteFavorite', favoriteId: fav.id }, (resp) => {
+          if (resp && resp.success) {
+            allFavorites = allFavorites.filter(f => f.id !== fav.id);
+            filterAndRenderFavorites();
+            showToast('已删除收藏');
+          }
+        });
+      }
+    });
+    
+    item.addEventListener('click', () => {
+      chrome.runtime.sendMessage({ action: 'rePreview', url: fav.url });
+    });
+    
+    list.appendChild(item);
+  });
+}
+
+function showAddCategoryDialog() {
+  const name = prompt('请输入分类名称：');
+  if (!name || !name.trim()) return;
+  
+  const colors = ['#667eea', '#f093fb', '#4facfe', '#43e97b', '#fa709a', '#fee140', '#30cfd0', '#a8edea'];
+  const color = colors[Math.floor(Math.random() * colors.length)];
+  
+  chrome.runtime.sendMessage({ action: 'addFavoriteCategory', name: name.trim(), color: color }, (resp) => {
+    if (resp && resp.success) {
+      loadFavorites();
+      showToast('分类已添加');
+    }
+  });
+}
+
 function loadSettings() {
   chrome.storage.sync.get(DEFAULT_SETTINGS, (result) => {
     document.querySelector(`input[name="triggerMode"][value="${result.triggerMode}"]`).checked = true;
@@ -296,9 +499,13 @@ function switchTab(tabName) {
   document.getElementById('tab-theme').style.display = tabName === 'theme' ? '' : 'none';
   document.getElementById('tab-security').style.display = tabName === 'security' ? '' : 'none';
   document.getElementById('tab-history').style.display = tabName === 'history' ? '' : 'none';
+  document.getElementById('tab-favorites').style.display = tabName === 'favorites' ? '' : 'none';
 
   if (tabName === 'history') {
     loadHistory();
+  }
+  if (tabName === 'favorites') {
+    loadFavorites();
   }
 }
 
@@ -574,6 +781,19 @@ function init() {
       secondaryColor.value = e.target.value;
     }
   });
+
+  const favSearchInput = document.getElementById('favoritesSearch');
+  if (favSearchInput) {
+    favSearchInput.addEventListener('input', () => {
+      currentFavoriteSearch = favSearchInput.value.trim();
+      filterAndRenderFavorites();
+    });
+  }
+
+  const addCatBtn = document.getElementById('addCategoryBtn');
+  if (addCatBtn) {
+    addCatBtn.addEventListener('click', showAddCategoryDialog);
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);
