@@ -410,39 +410,152 @@
 
   function getLinkType(url) {
     try {
-      const urlObj = new URL(url);
+      if (!url || typeof url !== 'string') return 'unknown';
+
+      const trimmedUrl = url.trim();
+      if (!trimmedUrl) return 'unknown';
+
+      if (trimmedUrl.startsWith('data:')) {
+        const dataType = trimmedUrl.slice(5).split(';')[0].toLowerCase();
+        if (dataType.startsWith('image/')) return 'image';
+        if (dataType.startsWith('video/')) return 'video';
+        if (dataType.startsWith('audio/')) return 'audio';
+        return 'webpage';
+      }
+
+      if (trimmedUrl.startsWith('blob:')) {
+        return 'webpage';
+      }
+
+      if (trimmedUrl.startsWith('#') || trimmedUrl.startsWith('javascript:') ||
+          trimmedUrl.startsWith('mailto:') || trimmedUrl.startsWith('tel:') ||
+          trimmedUrl.startsWith('sms:') || trimmedUrl.startsWith('ftp://') ||
+          trimmedUrl.startsWith('file://')) {
+        return 'unknown';
+      }
+
+      const urlObj = new URL(trimmedUrl, window.location.href);
+      const protocol = urlObj.protocol.toLowerCase();
+
+      if (protocol !== 'http:' && protocol !== 'https:') {
+        return 'unknown';
+      }
+
       const pathname = urlObj.pathname.toLowerCase();
       const hostname = urlObj.hostname.toLowerCase();
 
-      const videoExts = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv', '.flv', '.wmv'];
-      const audioExts = ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a', '.wma'];
-      const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico'];
+      const imageExts = [
+        '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico',
+        '.tiff', '.tif', '.avif', '.heic', '.heif', '.raw', '.psd',
+        '.jp2', '.j2k', '.jxr', '.hdp', '.wdp'
+      ];
+      const videoExts = [
+        '.mp4', '.webm', '.mov', '.avi', '.mkv', '.flv', '.wmv',
+        '.m4v', '.3gp', '.3g2', '.ts', '.mts', '.m2ts', '.vob',
+        '.ogv', '.dv', '.rm', '.rmvb', '.asf'
+      ];
+      const audioExts = [
+        '.mp3', '.wav', '.flac', '.aac', '.m4a', '.wma',
+        '.opus', '.aiff', '.aif', '.ape', '.alac', '.wv',
+        '.oga', '.midi', '.mid', '.amr', '.ac3', '.dts'
+      ];
 
-      for (const ext of videoExts) {
-        if (pathname.endsWith(ext)) return 'video';
-      }
-      for (const ext of audioExts) {
-        if (pathname.endsWith(ext)) return 'audio';
-      }
-      for (const ext of imageExts) {
-        if (pathname.endsWith(ext)) return 'image';
+      const extMatch = pathname.match(/\.[a-z0-9]+$/);
+      const ext = extMatch ? extMatch[0] : '';
+
+      if (ext) {
+        for (const imageExt of imageExts) {
+          if (ext === imageExt) return 'image';
+        }
+        for (const videoExt of videoExts) {
+          if (ext === videoExt) return 'video';
+        }
+        for (const audioExt of audioExts) {
+          if (ext === audioExt) return 'audio';
+        }
+
+        if (ext === '.ogg' || ext === '.ogx') {
+          if (pathname.includes('video') || pathname.includes('movie') || pathname.includes('film')) {
+            return 'video';
+          }
+          if (pathname.includes('audio') || pathname.includes('music') || pathname.includes('song')) {
+            return 'audio';
+          }
+          return 'audio';
+        }
       }
 
       const videoSites = [
-        'youtube.com', 'youtu.be', 'bilibili.com', 'vimeo.com',
-        'dailymotion.com', 'youku.com', 'iqiyi.com', 'tudou.com',
-        'mgtv.com', 'le.com', 'pptv.com'
+        { domain: 'youtube.com', exact: false },
+        { domain: 'youtu.be', exact: true },
+        { domain: 'bilibili.com', exact: false },
+        { domain: 'b23.tv', exact: true },
+        { domain: 'vimeo.com', exact: false },
+        { domain: 'dailymotion.com', exact: false },
+        { domain: 'dai.ly', exact: true },
+        { domain: 'youku.com', exact: false },
+        { domain: 'iqiyi.com', exact: false },
+        { domain: 'iq.com', exact: false },
+        { domain: 'tudou.com', exact: false },
+        { domain: 'mgtv.com', exact: false },
+        { domain: 'le.com', exact: false },
+        { domain: 'pptv.com', exact: false },
+        { domain: 'douyin.com', exact: false },
+        { domain: 'iesdouyin.com', exact: false },
+        { domain: 'tiktok.com', exact: false },
+        { domain: 'twitch.tv', exact: false },
+        { domain: 'netflix.com', exact: false },
+        { domain: 'hulu.com', exact: false },
+        { domain: 'primevideo.com', exact: false },
+        { domain: 'disneyplus.com', exact: false },
+        { domain: 'kuaishou.com', exact: false },
+        { domain: 'jsdelivr.net', exact: false, pathCheck: '/gh/' }
       ];
+
       for (const site of videoSites) {
-        if (hostname.includes(site)) return 'video-site';
+        if (site.exact) {
+          if (hostname === site.domain || hostname.endsWith('.' + site.domain)) {
+            if (site.pathCheck && !pathname.startsWith(site.pathCheck)) continue;
+            return 'video-site';
+          }
+        } else {
+          if (hostname === site.domain || hostname.endsWith('.' + site.domain)) {
+            if (site.pathCheck && !pathname.startsWith(site.pathCheck)) continue;
+            return 'video-site';
+          }
+        }
       }
 
       const audioSites = [
-        'music.163.com', 'y.qq.com', 'kuwo.cn', 'kugou.com',
-        'xiami.com', 'spotify.com', 'soundcloud.com', 'music.apple.com'
+        { domain: 'music.163.com', exact: true },
+        { domain: 'y.qq.com', exact: true },
+        { domain: 'music.qq.com', exact: true },
+        { domain: 'kuwo.cn', exact: false },
+        { domain: 'kugou.com', exact: false },
+        { domain: 'xiami.com', exact: false },
+        { domain: 'spotify.com', exact: false },
+        { domain: 'open.spotify.com', exact: true },
+        { domain: 'soundcloud.com', exact: false },
+        { domain: 'music.apple.com', exact: true },
+        { domain: 'itunes.apple.com', exact: true },
+        { domain: 'pandora.com', exact: false },
+        { domain: 'deezer.com', exact: false },
+        { domain: 'tidal.com', exact: false },
+        { domain: 'bandcamp.com', exact: false },
+        { domain: 'mixcloud.com', exact: false },
+        { domain: 'music.126.net', exact: true }
       ];
+
       for (const site of audioSites) {
-        if (hostname.includes(site)) return 'audio-site';
+        if (site.exact) {
+          if (hostname === site.domain || hostname.endsWith('.' + site.domain)) {
+            return 'audio-site';
+          }
+        } else {
+          if (hostname === site.domain || hostname.endsWith('.' + site.domain)) {
+            return 'audio-site';
+          }
+        }
       }
 
       return 'webpage';
