@@ -141,6 +141,160 @@
   font-size: 14px;
 }
 
+.qlp-loading-progress {
+  width: 200px;
+  height: 6px;
+  background: #e5e7eb;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 12px;
+  margin-bottom: 8px;
+}
+
+.qlp-loading-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea, #764ba2);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+
+.qlp-loading-progress-bar.indeterminate {
+  width: 30%;
+  animation: qlp-progress-indeterminate 1.5s ease-in-out infinite;
+}
+
+@keyframes qlp-progress-indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(333%); }
+}
+
+.qlp-loading-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: #9ca3af;
+  margin-top: 4px;
+}
+
+.qlp-loading-percent {
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.qlp-loading-size {
+  font-family: 'SF Mono', Monaco, monospace;
+}
+
+.qlp-error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding: 30px 20px;
+  text-align: center;
+}
+
+.qlp-error-icon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 16px;
+  color: #ef4444;
+}
+
+.qlp-error-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 8px;
+}
+
+.qlp-error-message {
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.5;
+  margin-bottom: 16px;
+  max-width: 300px;
+  word-break: break-all;
+}
+
+.qlp-error-details {
+  font-size: 11px;
+  color: #9ca3af;
+  background: #f3f4f6;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-family: 'SF Mono', Monaco, monospace;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qlp-error-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.qlp-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #ffffff;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.qlp-retry-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.qlp-retry-btn:active {
+  transform: translateY(0);
+}
+
+.qlp-retry-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.qlp-retry-count {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-top: 8px;
+}
+
+.qlp-timeout-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #92400e;
+}
+
+.qlp-timeout-warning svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
 .qlp-image-container {
   display: flex;
   align-items: center;
@@ -434,6 +588,124 @@
 
 .qlp-embed-loading .qlp-spinner {
   margin-bottom: 16px;
+}
+
+.qlp-embed-progress-container {
+  width: 200px;
+  height: 6px;
+  background: #e5e7eb;
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 12px 0 8px;
+}
+
+.qlp-embed-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+
+.qlp-embed-progress-bar.indeterminate {
+  position: relative;
+  width: 30% !important;
+  animation: qlpEmbedProgressIndeterminate 1.5s infinite ease-in-out;
+}
+
+@keyframes qlpEmbedProgressIndeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(566%);
+  }
+}
+
+.qlp-embed-loading-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.qlp-embed-percent {
+  font-size: 12px;
+  font-weight: 600;
+  color: #667eea;
+}
+
+.qlp-embed-loading-hint {
+  font-size: 11px;
+  color: #9ca3af;
+  text-align: center;
+}
+
+.qlp-embed-error-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fef2f2;
+  border-radius: 50%;
+  margin-bottom: 16px;
+  color: #ef4444;
+}
+
+.qlp-embed-error-icon svg {
+  margin-bottom: 0 !important;
+  color: #ef4444 !important;
+}
+
+.qlp-embed-error-message {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 12px;
+  line-height: 1.5;
+  max-width: 280px;
+}
+
+.qlp-embed-error-details {
+  margin-bottom: 16px;
+}
+
+.qlp-embed-error-tag {
+  display: inline-block;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #dc2626;
+  background: #fee2e2;
+  border-radius: 12px;
+}
+
+.qlp-embed-error-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.qlp-embed-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #4b5563;
+  background: #f3f4f6;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.qlp-embed-retry-btn:hover {
+  background: #e5e7eb;
+  color: #1f2937;
 }
 
 .qlp-embed-error {
@@ -736,6 +1008,45 @@
     border-top-color: #667eea;
   }
 
+  .qlp-loading-progress {
+    background: #374151;
+  }
+
+  .qlp-loading-meta {
+    color: #6b7280;
+  }
+
+  .qlp-loading-percent {
+    color: #9ca3af;
+  }
+
+  .qlp-error-container {
+    color: #e5e7eb;
+  }
+
+  .qlp-error-title {
+    color: #f9fafb;
+  }
+
+  .qlp-error-message {
+    color: #9ca3af;
+  }
+
+  .qlp-error-details {
+    background: #1f2937;
+    color: #6b7280;
+  }
+
+  .qlp-retry-count {
+    color: #6b7280;
+  }
+
+  .qlp-timeout-warning {
+    background: #78350f;
+    border-color: #92400e;
+    color: #fef3c7;
+  }
+
   .qlp-webpage-info {
     background: #1f2937;
   }
@@ -937,6 +1248,42 @@
 
   .qlp-embed-error svg {
     color: #f87171;
+  }
+
+  .qlp-embed-progress-container {
+    background: #374151;
+  }
+
+  .qlp-embed-loading-hint {
+    color: #6b7280;
+  }
+
+  .qlp-embed-error-icon {
+    background: #450a0a;
+    color: #f87171;
+  }
+
+  .qlp-embed-error-icon svg {
+    color: #f87171 !important;
+  }
+
+  .qlp-embed-error-message {
+    color: #9ca3af;
+  }
+
+  .qlp-embed-error-tag {
+    color: #fca5a5;
+    background: #450a0a;
+  }
+
+  .qlp-embed-retry-btn {
+    color: #d1d5db;
+    background: #374151;
+  }
+
+  .qlp-embed-retry-btn:hover {
+    background: #4b5563;
+    color: #f9fafb;
   }
 }
 

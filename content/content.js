@@ -1077,14 +1077,27 @@
     const content = panel.querySelector('#qlp-preview-content');
     
     const securityBadge = createSecurityBadge(secInfo);
-    const loadingHtml = `
-      <div class="qlp-loading">
-        <div class="qlp-spinner"></div>
-        <div class="qlp-loading-text">正在加载预览...</div>
-      </div>
-    `;
     
-    content.innerHTML = renderContentWithOrder(loadingHtml, securityBadge);
+    const typeLabels = {
+      'image': '图片',
+      'video': '视频',
+      'video-site': '视频网站',
+      'audio': '音频',
+      'audio-site': '音频网站',
+      'webpage': '网页',
+      'unknown': '链接'
+    };
+    const typeLabel = typeLabels[linkType] || '链接';
+    
+    const initialLoadingHtml = createLoadingHtml({
+      text: `正在加载${typeLabel}预览...`,
+      showProgress: true,
+      indeterminate: true,
+      showMeta: false,
+      percent: 0
+    });
+    
+    content.innerHTML = renderContentWithOrder(initialLoadingHtml, securityBadge);
 
     applyThemeToPanel(panel);
     applyComponentVisibility(panel);
@@ -1591,6 +1604,220 @@
     }
   }
 
+  const LOAD_CONFIG = {
+    imageTimeout: 15000,
+    videoTimeout: 20000,
+    audioTimeout: 20000,
+    webpageTimeout: 10000,
+    maxRetries: 3,
+    retryDelay: 1000
+  };
+
+  function formatFileSize(bytes) {
+    if (!bytes || bytes === 0) return '';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+  }
+
+  function getErrorCategory(error) {
+    const message = error?.message || String(error || '');
+    if (message.includes('timeout') || message.includes('超时') || message.includes('Timeout')) {
+      return { type: 'timeout', label: '加载超时', icon: '⏱️' };
+    }
+    if (message.includes('abort') || message.includes('Abort')) {
+      return { type: 'abort', label: '加载中断', icon: '⏹️' };
+    }
+    if (message.includes('network') || message.includes('Network') || message.includes('网络')) {
+      return { type: 'network', label: '网络错误', icon: '📡' };
+    }
+    if (message.includes('404') || message.includes('Not Found')) {
+      return { type: 'notfound', label: '资源不存在 (404)', icon: '🔍' };
+    }
+    if (message.includes('403') || message.includes('Forbidden')) {
+      return { type: 'forbidden', label: '访问被拒绝 (403)', icon: '🔒' };
+    }
+    if (message.includes('5')) {
+      return { type: 'server', label: '服务器错误', icon: '⚠️' };
+    }
+    if (message.includes('CORS') || message.includes('cross-origin') || message.includes('跨域')) {
+      return { type: 'cors', label: '跨域限制', icon: '🚫' };
+    }
+    return { type: 'unknown', label: '加载失败', icon: '❌' };
+  }
+
+  function createLoadingHtml(options = {}) {
+    const {
+      text = '正在加载...',
+      showProgress = true,
+      indeterminate = true,
+      showMeta = false,
+      percent = 0,
+      loadedSize = '',
+      totalSize = ''
+    } = options;
+
+    let progressHtml = '';
+    if (showProgress) {
+      progressHtml = `
+        <div class="qlp-loading-progress">
+          <div class="qlp-loading-progress-bar ${indeterminate ? 'indeterminate' : ''}" 
+               style="width: ${indeterminate ? '30%' : percent + '%'}"></div>
+        </div>
+      `;
+    }
+
+    let metaHtml = '';
+    if (showMeta) {
+      metaHtml = `
+        <div class="qlp-loading-meta">
+          <span class="qlp-loading-percent">${percent}%</span>
+          ${loadedSize || totalSize ? `<span class="qlp-loading-size">${loadedSize || '--'} / ${totalSize || '--'}</span>` : ''}
+        </div>
+      `;
+    }
+
+    return `
+      <div class="qlp-loading">
+        <div class="qlp-spinner"></div>
+        <div class="qlp-loading-text">${text}</div>
+        ${progressHtml}
+        ${metaHtml}
+      </div>
+    `;
+  }
+
+  function createErrorHtml(options = {}) {
+    const {
+      error = null,
+      title = '',
+      message = '',
+      showRetry = true,
+      retryCount = 0,
+      maxRetries = LOAD_CONFIG.maxRetries,
+      showDetails = true
+    } = options;
+
+    const errorInfo = getErrorCategory(error);
+    const displayTitle = title || errorInfo.label;
+    const displayMessage = message || (error?.message ? String(error.message) : '请检查网络连接后重试');
+    const remainingRetries = Math.max(0, maxRetries - retryCount);
+
+    return `
+      <div class="qlp-error-container">
+        <div class="qlp-error-icon">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+          </svg>
+        </div>
+        <div class="qlp-error-title">${displayTitle}</div>
+        <div class="qlp-error-message">${displayMessage}</div>
+        ${showDetails && error ? `<div class="qlp-error-details" title="${escapeHtml(String(error.message || error))}">${escapeHtml(String(error.message || error))}</div>` : ''}
+        <div class="qlp-error-actions">
+          ${showRetry && remainingRetries > 0 ? `
+            <button class="qlp-retry-btn" data-action="retry">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+              </svg>
+              重新加载
+            </button>
+          ` : ''}
+          <a class="qlp-retry-btn" href="${escapeHtml(options.url || '#')}" target="_blank" rel="noopener noreferrer" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+              <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>
+            </svg>
+            在新标签页打开
+          </a>
+        </div>
+        ${showRetry && retryCount > 0 ? `<div class="qlp-retry-count">已重试 ${retryCount} 次，还可重试 ${remainingRetries} 次</div>` : ''}
+      </div>
+    `;
+  }
+
+  function updateLoadingProgress(container, percent, loadedSize, totalSize) {
+    const progressBar = container.querySelector('.qlp-loading-progress-bar');
+    const percentEl = container.querySelector('.qlp-loading-percent');
+    const sizeEl = container.querySelector('.qlp-loading-size');
+
+    if (progressBar) {
+      progressBar.classList.remove('indeterminate');
+      progressBar.style.width = percent + '%';
+    }
+    if (percentEl) {
+      percentEl.textContent = Math.round(percent) + '%';
+    }
+    if (sizeEl && loadedSize && totalSize) {
+      sizeEl.textContent = `${formatFileSize(loadedSize)} / ${formatFileSize(totalSize)}`;
+    }
+  }
+
+  function loadImageWithProgress(url, onProgress, onLoad, onError, timeout = LOAD_CONFIG.imageTimeout) {
+    const xhr = new XMLHttpRequest();
+    let timedOut = false;
+    let completed = false;
+
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      completed = true;
+      xhr.abort();
+      if (onError) onError(new Error('加载超时，请检查网络连接'));
+    }, timeout);
+
+    xhr.open('GET', url, true);
+    xhr.responseType = 'blob';
+
+    xhr.onprogress = (e) => {
+      if (timedOut || completed) return;
+      if (e.lengthComputable && onProgress) {
+        const percent = (e.loaded / e.total) * 100;
+        onProgress(percent, e.loaded, e.total);
+      }
+    };
+
+    xhr.onload = () => {
+      if (timedOut || completed) return;
+      clearTimeout(timeoutId);
+      completed = true;
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const blob = xhr.response;
+        const imgUrl = URL.createObjectURL(blob);
+        if (onLoad) onLoad(imgUrl, xhr.getResponseHeader('content-type'));
+      } else {
+        if (onError) onError(new Error(`HTTP ${xhr.status}: ${xhr.statusText || '请求失败'}`));
+      }
+    };
+
+    xhr.onerror = () => {
+      if (timedOut || completed) return;
+      clearTimeout(timeoutId);
+      completed = true;
+      if (onError) onError(new Error('网络错误，无法加载图片'));
+    };
+
+    xhr.onabort = () => {
+      if (timedOut || completed) return;
+      clearTimeout(timeoutId);
+      completed = true;
+    };
+
+    try {
+      xhr.send();
+    } catch (e) {
+      clearTimeout(timeoutId);
+      if (onError) onError(e);
+    }
+
+    return {
+      abort: () => {
+        clearTimeout(timeoutId);
+        completed = true;
+        xhr.abort();
+      }
+    };
+  }
+
   function loadPreviewContent(url, type, container, securityInfo = null, ruleActions = null) {
     const securityBadge = securityInfo && settings.enableSecurityCheck ? createSecurityBadge(securityInfo) : '';
     
@@ -1613,25 +1840,78 @@
     }
   }
 
-  function loadImagePreview(url, container, securityBadge = '') {
-    const img = new Image();
-    img.onload = () => {
+  function loadImagePreview(url, container, securityBadge = '', retryCount = 0) {
+    let loadController = null;
+    let objectUrl = null;
+
+    const loadingHtml = createLoadingHtml({
+      text: '正在加载图片...',
+      showProgress: true,
+      indeterminate: true,
+      showMeta: true,
+      percent: 0
+    });
+    container.innerHTML = renderContentWithOrder(loadingHtml, securityBadge);
+
+    function onProgress(percent, loaded, total) {
+      updateLoadingProgress(container, percent, loaded, total);
+    }
+
+    function onLoad(imgUrl, contentType) {
+      objectUrl = imgUrl;
       const contentHtml = `
         <div class="qlp-image-container">
-          <img src="${url}" alt="图片预览" class="qlp-preview-image" />
+          <img src="${imgUrl}" alt="图片预览" class="qlp-preview-image" />
         </div>
       `;
       container.innerHTML = renderContentWithOrder(contentHtml, securityBadge);
-    };
-    img.onerror = () => {
-      const contentHtml = `
-        <div class="qlp-loading">
-          <div class="qlp-loading-text">图片加载失败</div>
-        </div>
-      `;
-      container.innerHTML = renderContentWithOrder(contentHtml, securityBadge);
-    };
-    img.src = url;
+    }
+
+    function onError(error) {
+      const errorHtml = createErrorHtml({
+        error: error,
+        title: '图片加载失败',
+        url: url,
+        retryCount: retryCount,
+        maxRetries: LOAD_CONFIG.maxRetries
+      });
+      container.innerHTML = renderContentWithOrder(errorHtml, securityBadge);
+
+      const retryBtn = container.querySelector('[data-action="retry"]');
+      if (retryBtn) {
+        retryBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (objectUrl) {
+            URL.revokeObjectURL(objectUrl);
+            objectUrl = null;
+          }
+          loadImagePreview(url, container, securityBadge, retryCount + 1);
+        });
+      }
+    }
+
+    loadController = loadImageWithProgress(
+      url,
+      onProgress,
+      onLoad,
+      onError,
+      LOAD_CONFIG.imageTimeout
+    );
+
+    const cleanupObserver = new MutationObserver(() => {
+      if (!document.body.contains(container)) {
+        if (loadController && loadController.abort) {
+          loadController.abort();
+        }
+        if (objectUrl) {
+          URL.revokeObjectURL(objectUrl);
+        }
+        cleanupObserver.disconnect();
+      }
+    });
+    if (container.parentNode) {
+      cleanupObserver.observe(container.parentNode, { childList: true, subtree: true });
+    }
   }
 
   function renderContentWithOrder(contentHtml, securityBadge) {
@@ -1674,52 +1954,330 @@
     }
   }
 
-  function loadVideoPreview(url, container, securityBadge = '') {
-    const contentHtml = `
-      <div class="qlp-media-container">
-        <video src="${url}" controls class="qlp-preview-media" preload="metadata" muted>
-          您的浏览器不支持视频播放
-        </video>
-      </div>
-    `;
-    container.innerHTML = renderContentWithOrder(contentHtml, securityBadge);
-    const video = container.querySelector('video');
-    if (video) {
-      video.addEventListener('loadeddata', () => {
-        video.play().catch(() => {});
-      });
-    }
-  }
+  function loadVideoPreview(url, container, securityBadge = '', retryCount = 0) {
+    const loadingHtml = createLoadingHtml({
+      text: '正在加载视频...',
+      showProgress: true,
+      indeterminate: true,
+      showMeta: true,
+      percent: 0
+    });
+    container.innerHTML = renderContentWithOrder(loadingHtml, securityBadge);
 
-  function loadAudioPreview(url, container, securityBadge = '') {
-    const contentHtml = `
-      <div class="qlp-audio-container">
-        <div class="qlp-audio-icon">
-          <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
-            <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-          </svg>
-        </div>
-        <audio src="${url}" controls class="qlp-preview-audio" preload="metadata">
-          您的浏览器不支持音频播放
-        </audio>
-      </div>
-    `;
-    container.innerHTML = renderContentWithOrder(contentHtml, securityBadge);
-  }
+    let loadTimeout = null;
+    let loaded = false;
+    let errored = false;
 
-  function loadWebpagePreview(url, container, type, securityBadge = '', ruleActions = null) {
-    chrome.runtime.sendMessage({ action: 'fetchPageInfo', url: url }, (response) => {
-      if (chrome.runtime.lastError) {
-        renderFallbackPreview(url, container, type, securityBadge);
-        return;
+    function handleError(error) {
+      if (loaded || errored) return;
+      errored = true;
+      if (loadTimeout) {
+        clearTimeout(loadTimeout);
+        loadTimeout = null;
       }
 
-      if (response && response.success) {
-        renderRichPreview(url, response.data, container, type, securityBadge, ruleActions);
-      } else {
-        renderFallbackPreview(url, container, type, securityBadge);
+      const errorHtml = createErrorHtml({
+        error: error || new Error('视频加载失败'),
+        title: '视频加载失败',
+        url: url,
+        retryCount: retryCount,
+        maxRetries: LOAD_CONFIG.maxRetries
+      });
+      container.innerHTML = renderContentWithOrder(errorHtml, securityBadge);
+
+      const retryBtn = container.querySelector('[data-action="retry"]');
+      if (retryBtn) {
+        retryBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          loadVideoPreview(url, container, securityBadge, retryCount + 1);
+        });
+      }
+    }
+
+    function handleProgress(event) {
+      const media = event.target;
+      if (media.buffered && media.buffered.length > 0 && media.duration) {
+        const bufferedEnd = media.buffered.end(media.buffered.length - 1);
+        const percent = Math.min(100, (bufferedEnd / media.duration) * 100);
+        const loadedBytes = media.buffered.length * media.duration * 0.5;
+        updateLoadingProgress(container, percent, loadedBytes, media.duration * 0.5);
+      }
+    }
+
+    function handleLoadedData(event) {
+      loaded = true;
+      if (loadTimeout) {
+        clearTimeout(loadTimeout);
+        loadTimeout = null;
+      }
+
+      const video = event.target;
+      const contentHtml = `
+        <div class="qlp-media-container">
+          <video src="${url}" controls class="qlp-preview-media" preload="metadata" muted autoplay>
+            您的浏览器不支持视频播放
+          </video>
+        </div>
+      `;
+      container.innerHTML = renderContentWithOrder(contentHtml, securityBadge);
+      const newVideo = container.querySelector('video');
+      if (newVideo) {
+        newVideo.play().catch(() => {});
+      }
+    }
+
+    const video = document.createElement('video');
+    video.src = url;
+    video.preload = 'auto';
+    video.muted = true;
+
+    video.addEventListener('progress', handleProgress);
+    video.addEventListener('loadeddata', handleLoadedData);
+    video.addEventListener('canplay', handleLoadedData);
+    video.addEventListener('error', () => {
+      handleError(new Error('视频文件无法加载或格式不支持'));
+    });
+    video.addEventListener('stalled', () => {
+      const warning = container.querySelector('.qlp-timeout-warning');
+      if (!warning) {
+        const loadingEl = container.querySelector('.qlp-loading');
+        if (loadingEl) {
+          const warnDiv = document.createElement('div');
+          warnDiv.className = 'qlp-timeout-warning';
+          warnDiv.innerHTML = `
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+              <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+            </svg>
+            加载速度较慢，请稍候...
+          `;
+          loadingEl.appendChild(warnDiv);
+        }
       }
     });
+
+    loadTimeout = setTimeout(() => {
+      if (!loaded) {
+        handleError(new Error('加载超时，请检查网络连接'));
+      }
+    }, LOAD_CONFIG.videoTimeout);
+
+    video.load();
+  }
+
+  function loadAudioPreview(url, container, securityBadge = '', retryCount = 0) {
+    const loadingHtml = createLoadingHtml({
+      text: '正在加载音频...',
+      showProgress: true,
+      indeterminate: true,
+      showMeta: true,
+      percent: 0
+    });
+    container.innerHTML = renderContentWithOrder(loadingHtml, securityBadge);
+
+    let loadTimeout = null;
+    let loaded = false;
+    let errored = false;
+
+    function handleError(error) {
+      if (loaded || errored) return;
+      errored = true;
+      if (loadTimeout) {
+        clearTimeout(loadTimeout);
+        loadTimeout = null;
+      }
+
+      const errorHtml = createErrorHtml({
+        error: error || new Error('音频加载失败'),
+        title: '音频加载失败',
+        url: url,
+        retryCount: retryCount,
+        maxRetries: LOAD_CONFIG.maxRetries
+      });
+      container.innerHTML = renderContentWithOrder(errorHtml, securityBadge);
+
+      const retryBtn = container.querySelector('[data-action="retry"]');
+      if (retryBtn) {
+        retryBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          loadAudioPreview(url, container, securityBadge, retryCount + 1);
+        });
+      }
+    }
+
+    function handleProgress(event) {
+      const media = event.target;
+      if (media.buffered && media.buffered.length > 0 && media.duration) {
+        const bufferedEnd = media.buffered.end(media.buffered.length - 1);
+        const percent = Math.min(100, (bufferedEnd / media.duration) * 100);
+        updateLoadingProgress(container, percent, bufferedEnd, media.duration);
+      }
+    }
+
+    function handleLoadedData(event) {
+      loaded = true;
+      if (loadTimeout) {
+        clearTimeout(loadTimeout);
+        loadTimeout = null;
+      }
+
+      const contentHtml = `
+        <div class="qlp-audio-container">
+          <div class="qlp-audio-icon">
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
+              <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+            </svg>
+          </div>
+          <audio src="${url}" controls class="qlp-preview-audio" preload="metadata" autoplay>
+            您的浏览器不支持音频播放
+          </audio>
+        </div>
+      `;
+      container.innerHTML = renderContentWithOrder(contentHtml, securityBadge);
+      const audio = container.querySelector('audio');
+      if (audio) {
+        audio.play().catch(() => {});
+      }
+    }
+
+    const audio = document.createElement('audio');
+    audio.src = url;
+    audio.preload = 'auto';
+
+    audio.addEventListener('progress', handleProgress);
+    audio.addEventListener('loadeddata', handleLoadedData);
+    audio.addEventListener('canplay', handleLoadedData);
+    audio.addEventListener('error', () => {
+      handleError(new Error('音频文件无法加载或格式不支持'));
+    });
+    audio.addEventListener('stalled', () => {
+      const warning = container.querySelector('.qlp-timeout-warning');
+      if (!warning) {
+        const loadingEl = container.querySelector('.qlp-loading');
+        if (loadingEl) {
+          const warnDiv = document.createElement('div');
+          warnDiv.className = 'qlp-timeout-warning';
+          warnDiv.innerHTML = `
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+              <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+            </svg>
+            加载速度较慢，请稍候...
+          `;
+          loadingEl.appendChild(warnDiv);
+        }
+      }
+    });
+
+    loadTimeout = setTimeout(() => {
+      if (!loaded) {
+        handleError(new Error('加载超时，请检查网络连接'));
+      }
+    }, LOAD_CONFIG.audioTimeout);
+
+    audio.load();
+  }
+
+  function loadWebpagePreview(url, container, type, securityBadge = '', ruleActions = null, retryCount = 0) {
+    const loadingHtml = createLoadingHtml({
+      text: '正在获取页面信息...',
+      showProgress: true,
+      indeterminate: true,
+      showMeta: false,
+      percent: 0
+    });
+    container.innerHTML = renderContentWithOrder(loadingHtml, securityBadge);
+
+    let completed = false;
+    let timeoutId = null;
+    let progressInterval = null;
+    let progressPercent = 0;
+
+    progressInterval = setInterval(() => {
+      if (progressPercent < 90) {
+        progressPercent += Math.random() * 10;
+        if (progressPercent > 90) progressPercent = 90;
+        const progressBar = container.querySelector('.qlp-loading-progress-bar');
+        const percentEl = container.querySelector('.qlp-loading-percent');
+        if (progressBar) {
+          progressBar.classList.remove('indeterminate');
+          progressBar.style.width = progressPercent + '%';
+        }
+        if (percentEl) {
+          percentEl.textContent = Math.round(progressPercent) + '%';
+        }
+      }
+    }, 500);
+
+    timeoutId = setTimeout(() => {
+      if (completed) return;
+      completed = true;
+      clearInterval(progressInterval);
+      clearTimeout(timeoutId);
+      handleLoadError(new Error('获取页面信息超时'));
+    }, LOAD_CONFIG.webpageTimeout);
+
+    function handleLoadError(error) {
+      if (completed) return;
+      completed = true;
+      clearInterval(progressInterval);
+      clearTimeout(timeoutId);
+
+      if (retryCount < LOAD_CONFIG.maxRetries) {
+        const errorHtml = createErrorHtml({
+          error: error,
+          title: '页面加载失败',
+          url: url,
+          retryCount: retryCount,
+          maxRetries: LOAD_CONFIG.maxRetries,
+          message: '正在尝试使用备用模式加载...'
+        });
+        container.innerHTML = renderContentWithOrder(errorHtml, securityBadge);
+
+        const retryBtn = container.querySelector('[data-action="retry"]');
+        if (retryBtn) {
+          retryBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            loadWebpagePreview(url, container, type, securityBadge, ruleActions, retryCount + 1);
+          });
+        }
+
+        setTimeout(() => {
+          renderFallbackPreview(url, container, type, securityBadge, retryCount + 1);
+        }, 500);
+      } else {
+        renderFallbackPreview(url, container, type, securityBadge, retryCount);
+      }
+    }
+
+    try {
+      chrome.runtime.sendMessage({ action: 'fetchPageInfo', url: url }, (response) => {
+        if (completed) return;
+
+        if (chrome.runtime.lastError) {
+          handleLoadError(new Error(chrome.runtime.lastError.message || '扩展通信错误'));
+          return;
+        }
+
+        if (response && response.success) {
+          completed = true;
+          clearInterval(progressInterval);
+          clearTimeout(timeoutId);
+          
+          const progressBar = container.querySelector('.qlp-loading-progress-bar');
+          if (progressBar) {
+            progressBar.classList.remove('indeterminate');
+            progressBar.style.width = '100%';
+          }
+          
+          setTimeout(() => {
+            renderRichPreview(url, response.data, container, type, securityBadge, ruleActions);
+          }, 200);
+        } else {
+          handleLoadError(new Error(response?.error || '无法获取页面信息'));
+        }
+      });
+    } catch (e) {
+      handleLoadError(e);
+    }
   }
 
   function escapeHtml(text) {
@@ -2130,21 +2688,39 @@
             <div class="qlp-embed-loading">
               <div class="qlp-spinner"></div>
               <div class="qlp-loading-text">正在加载网页预览...</div>
-              <div style="margin-top:8px;font-size:11px;color:#9ca3af;">如果加载时间较长，将自动切换到快照模式</div>
+              <div class="qlp-embed-progress-container">
+                <div class="qlp-embed-progress-bar indeterminate"></div>
+              </div>
+              <div class="qlp-embed-loading-meta">
+                <span class="qlp-embed-percent">0%</span>
+                <span class="qlp-embed-loading-hint">如果加载时间较长，将自动切换到快照模式</span>
+              </div>
             </div>
             <div class="qlp-embed-error" style="display: none;">
-              <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
-              </svg>
-              <div class="qlp-embed-error-title">无法直接加载网页</div>
-              <div class="qlp-embed-error-desc">正在尝试快照模式加载...</div>
-              <button class="qlp-snapshot-fallback" style="display:none; margin-bottom:12px;">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="margin-right:6px;">
-                  <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+              <div class="qlp-embed-error-icon">
+                <svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
                 </svg>
-                使用快照模式
-              </button>
-              <a class="qlp-embed-open-btn" href="${safeUrl}" target="_blank" rel="noopener noreferrer">在新标签页打开</a>
+              </div>
+              <div class="qlp-embed-error-title">无法直接加载网页</div>
+              <div class="qlp-embed-error-message">该网页可能设置了防嵌入策略或跨域限制</div>
+              <div class="qlp-embed-error-details">
+                <span class="qlp-embed-error-tag">嵌入限制</span>
+              </div>
+              <div class="qlp-embed-error-actions">
+                <button class="qlp-embed-retry-btn qlp-snapshot-fallback" style="display:none;">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="margin-right:6px;">
+                    <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+                  </svg>
+                  使用快照模式
+                </button>
+                <a class="qlp-embed-open-btn" href="${safeUrl}" target="_blank" rel="noopener noreferrer">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="margin-right:6px;">
+                    <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>
+                  </svg>
+                  在新标签页打开
+                </a>
+              </div>
             </div>
           </div>
         </div>
@@ -2198,30 +2774,134 @@
     let loadTimeout = null;
     let snapshotTried = false;
     let iframeLoaded = false;
+    let progressInterval = null;
+    let progressPercent = 0;
 
-    function showEmbedError(allowSnapshot = true) {
+    function stopProgressAnimation() {
+      if (progressInterval) {
+        clearInterval(progressInterval);
+        progressInterval = null;
+      }
+    }
+
+    function startProgressAnimation(type = 'iframe') {
+      stopProgressAnimation();
+      progressPercent = 0;
+      const progressBar = embedLoading?.querySelector('.qlp-embed-progress-bar');
+      const percentEl = embedLoading?.querySelector('.qlp-embed-percent');
+      const loadingHint = embedLoading?.querySelector('.qlp-embed-loading-hint');
+      const loadingText = embedLoading?.querySelector('.qlp-loading-text');
+
+      if (loadingText) {
+        loadingText.textContent = type === 'snapshot' ? '正在加载网页快照...' : '正在加载网页预览...';
+      }
+
+      if (loadingHint) {
+        loadingHint.textContent = type === 'snapshot' 
+          ? '正在获取页面快照，请稍候...' 
+          : '如果加载时间较长，将自动切换到快照模式';
+      }
+
+      if (progressBar) {
+        progressBar.classList.add('indeterminate');
+      }
+      if (percentEl) {
+        percentEl.textContent = '';
+      }
+
+      setTimeout(() => {
+        if (progressBar && progressPercent === 0) {
+          progressBar.classList.remove('indeterminate');
+          progressBar.style.width = '0%';
+          if (percentEl) percentEl.textContent = '0%';
+          
+          progressInterval = setInterval(() => {
+            const increment = type === 'snapshot' ? 3 : 5;
+            const maxProgress = type === 'snapshot' ? 80 : 60;
+            
+            if (progressPercent < maxProgress) {
+              progressPercent += Math.random() * increment;
+              if (progressPercent > maxProgress) progressPercent = maxProgress;
+              if (progressBar) progressBar.style.width = progressPercent + '%';
+              if (percentEl) percentEl.textContent = Math.round(progressPercent) + '%';
+            }
+          }, type === 'snapshot' ? 400 : 500);
+        }
+      }, 300);
+    }
+
+    function completeProgressAnimation() {
+      stopProgressAnimation();
+      const progressBar = embedLoading?.querySelector('.qlp-embed-progress-bar');
+      const percentEl = embedLoading?.querySelector('.qlp-embed-percent');
+      
+      if (progressBar) {
+        progressBar.classList.remove('indeterminate');
+        progressBar.style.width = '100%';
+      }
+      if (percentEl) {
+        percentEl.textContent = '100%';
+      }
+    }
+
+    function updateErrorDisplay(errorType = 'embed', message = '') {
+      if (!embedError) return;
+      
+      const errorTitle = embedError.querySelector('.qlp-embed-error-title');
+      const errorMessage = embedError.querySelector('.qlp-embed-error-message');
+      const errorTag = embedError.querySelector('.qlp-embed-error-tag');
+      const snapshotBtnInError = embedError.querySelector('.qlp-embed-retry-btn');
+      
+      const errorCategories = {
+        timeout: {
+          title: '加载超时',
+          message: '网络连接较慢或服务器响应超时，请稍后再试',
+          tag: '超时'
+        },
+        embed: {
+          title: '无法直接加载网页',
+          message: '该网页可能设置了防嵌入策略（X-Frame-Options）或跨域限制',
+          tag: '嵌入限制'
+        },
+        network: {
+          title: '网络错误',
+          message: '无法连接到服务器，请检查网络连接',
+          tag: '网络错误'
+        },
+        snapshot_failed: {
+          title: '无法加载预览',
+          message: '该网页无法生成预览快照，请在新标签页中打开',
+          tag: '预览失败'
+        }
+      };
+      
+      const category = errorCategories[errorType] || errorCategories.embed;
+      
+      if (errorTitle) errorTitle.textContent = category.title;
+      if (errorMessage) errorMessage.textContent = message || category.message;
+      if (errorTag) errorTag.textContent = category.tag;
+      
+      if (snapshotBtnInError) {
+        if (errorType === 'snapshot_failed' || snapshotTried) {
+          snapshotBtnInError.style.display = 'none';
+        } else {
+          snapshotBtnInError.style.display = 'inline-flex';
+        }
+      }
+    }
+
+    function showEmbedError(errorType = 'embed', message = '') {
+      stopProgressAnimation();
       if (embedLoading) embedLoading.style.display = 'none';
       if (embedError) {
         embedError.style.display = 'flex';
-        const errorDesc = embedError.querySelector('.qlp-embed-error-desc');
-        const errorTitle = embedError.querySelector('.qlp-embed-error-title');
-        if (snapshotTried) {
-          if (errorTitle) errorTitle.textContent = '无法加载预览';
-          if (errorDesc) errorDesc.textContent = '该网页无法预览，请在新标签页中打开';
-          if (snapshotFallback) snapshotFallback.style.display = 'none';
-        } else {
-          if (errorTitle) errorTitle.textContent = '无法直接加载网页';
-          if (errorDesc) errorDesc.textContent = allowSnapshot ? '正在尝试快照模式加载...' : '请尝试快照模式或在新标签页打开';
-          if (snapshotFallback && allowSnapshot) {
-            snapshotFallback.style.display = 'inline-flex';
-            snapshotFallback.className = 'qlp-snapshot-fallback qlp-embed-open-btn';
-          }
-        }
+        updateErrorDisplay(errorType, message);
       }
       if (iframe) iframe.style.display = 'none';
     }
 
     function hideEmbedError() {
+      stopProgressAnimation();
       if (embedLoading) embedLoading.style.display = 'none';
       if (embedError) embedError.style.display = 'none';
       if (iframe) iframe.style.display = 'block';
@@ -2230,19 +2910,24 @@
     function loadSnapshotMode() {
       if (snapshotTried) return;
       snapshotTried = true;
-      iframeLoaded = true;
 
       if (embedLoading) {
         embedLoading.style.display = 'flex';
-        const loadingText = embedLoading.querySelector('.qlp-loading-text');
-        if (loadingText) loadingText.textContent = '正在加载网页快照...';
+        startProgressAnimation('snapshot');
       }
       if (embedError) embedError.style.display = 'none';
       if (iframe) iframe.style.display = 'none';
 
+      let snapshotTimeout = setTimeout(() => {
+        if (!iframeLoaded) {
+          showEmbedError('timeout', '快照加载超时，请在新标签页中打开');
+        }
+      }, 15000);
+
       chrome.runtime.sendMessage(
         { action: 'fetchPageSnapshot', url: url },
         (response) => {
+          clearTimeout(snapshotTimeout);
           if (response && response.success && response.data && response.data.html) {
             try {
               if (iframe) {
@@ -2253,7 +2938,11 @@
                 iframeDoc.close();
                 iframe.style.display = 'block';
               }
-              hideEmbedError();
+              iframeLoaded = true;
+              completeProgressAnimation();
+              setTimeout(() => {
+                hideEmbedError();
+              }, 200);
               if (snapshotBtn) snapshotBtn.style.display = 'flex';
               if (descEl) descEl.textContent = '已使用快照模式加载（部分交互功能可能不可用）';
               if (toggleBtn) {
@@ -2266,10 +2955,10 @@
               }
             } catch (e) {
               console.warn('Snapshot render failed:', e);
-              showEmbedError(false);
+              showEmbedError('snapshot_failed');
             }
           } else {
-            showEmbedError(false);
+            showEmbedError('snapshot_failed', response?.error || '无法获取页面快照');
           }
         }
       );
@@ -2282,10 +2971,11 @@
       }
       iframeLoaded = false;
       snapshotTried = false;
+      stopProgressAnimation();
+      
       if (embedLoading) {
         embedLoading.style.display = 'flex';
-        const loadingText = embedLoading.querySelector('.qlp-loading-text');
-        if (loadingText) loadingText.textContent = '正在加载网页预览...';
+        startProgressAnimation('iframe');
       }
       if (embedError) embedError.style.display = 'none';
       if (iframe) {
@@ -2316,11 +3006,14 @@
                   if (!snapshotTried) {
                     loadSnapshotMode();
                   } else {
-                    showEmbedError(false);
+                    showEmbedError('embed');
                   }
                 } else {
                   iframeLoaded = true;
-                  hideEmbedError();
+                  completeProgressAnimation();
+                  setTimeout(() => {
+                    hideEmbedError();
+                  }, 200);
                   if (descEl) descEl.textContent = '网页预览已加载';
                   if (toggleBtn) {
                     toggleBtn.innerHTML = `
@@ -2333,7 +3026,10 @@
                 }
               } catch (e) {
                 iframeLoaded = true;
-                hideEmbedError();
+                completeProgressAnimation();
+                setTimeout(() => {
+                  hideEmbedError();
+                }, 200);
                 if (descEl) descEl.textContent = '网页预览已加载';
                 if (toggleBtn) {
                   toggleBtn.innerHTML = `
@@ -2350,7 +3046,7 @@
           if (!snapshotTried) {
             loadSnapshotMode();
           } else {
-            showEmbedError(false);
+            showEmbedError('embed');
           }
         }
       });
@@ -2363,7 +3059,7 @@
         if (!snapshotTried) {
           loadSnapshotMode();
         } else {
-          showEmbedError(false);
+          showEmbedError('network');
         }
       });
     }
