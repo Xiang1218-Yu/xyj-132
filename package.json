@@ -4,7 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "jest --coverage --verbose"
+    "test": "jest --coverage --verbose",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "keywords": [],
   "author": "",
@@ -13,7 +16,9 @@
   "devDependencies": {
     "@babel/core": "^7.29.7",
     "@babel/preset-env": "^7.29.7",
+    "@crxjs/vite-plugin": "^2.6.1",
     "babel-jest": "^30.4.1",
-    "jest": "^30.4.2"
+    "jest": "^30.4.2",
+    "vite": "^8.0.16"
   }
 }
