@@ -38,7 +38,21 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content/content.js"],
+      "js": [
+        "content/01-config.js",
+        "content/02-utils.js",
+        "content/03-security.js",
+        "content/04-link-types.js",
+        "content/05-theme.js",
+        "content/06-positioning.js",
+        "content/07-loaders.js",
+        "content/08-preview-panel.js",
+        "content/09-batch-mode.js",
+        "content/10-qrcode.js",
+        "content/11-shortcuts.js",
+        "content/12-favorites.js",
+        "content/13-main.js"
+      ],
       "css": ["content/content.css"],
       "run_at": "document_idle",
       "all_frames": false
