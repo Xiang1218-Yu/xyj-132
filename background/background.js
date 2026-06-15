@@ -1,26 +1,186 @@
-const CACHE = new Map();
-const CACHE_MAX_SIZE = 100;
-const CACHE_TTL = 10 * 60 * 1000;
+const CACHE_TIERS = {
+  webpage: { ttl: 10 * 60 * 1000, maxSize: 60 },
+  image: { ttl: 30 * 60 * 1000, maxSize: 40 },
+  video: { ttl: 15 * 60 * 1000, maxSize: 20 },
+  'video-site': { ttl: 15 * 60 * 1000, maxSize: 20 },
+  audio: { ttl: 20 * 60 * 1000, maxSize: 20 },
+  'audio-site': { ttl: 20 * 60 * 1000, maxSize: 20 },
+  snapshot: { ttl: 5 * 60 * 1000, maxSize: 30 },
+  default: { ttl: 10 * 60 * 1000, maxSize: 50 }
+};
+
+const cacheStores = {};
+const cacheStats = {
+  hits: 0,
+  misses: 0,
+  evictions: 0,
+  sets: 0,
+  tierStats: {}
+};
+
+for (const tier of Object.keys(CACHE_TIERS)) {
+  cacheStores[tier] = new Map();
+  cacheStats.tierStats[tier] = { hits: 0, misses: 0, evictions: 0, sets: 0, size: 0 };
+}
+
+function detectCacheTier(url) {
+  if (url.startsWith('snapshot:')) return 'snapshot';
+  try {
+    const pathname = new URL(url.replace('snapshot:', '')).pathname.toLowerCase();
+    const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico', '.avif', '.heic'];
+    const videoExts = ['.mp4', '.webm', '.mov', '.avi', '.mkv', '.flv', '.wmv', '.m4v'];
+    const audioExts = ['.mp3', '.wav', '.flac', '.aac', '.m4a', '.wma', '.opus'];
+
+    const ext = pathname.match(/\.[a-z0-9]+$/);
+    if (ext) {
+      if (imageExts.includes(ext[0])) return 'image';
+      if (videoExts.includes(ext[0])) return 'video';
+      if (audioExts.includes(ext[0])) return 'audio';
+    }
+
+    const hostname = new URL(url.replace('snapshot:', '')).hostname.toLowerCase();
+    const videoSites = ['youtube.com', 'youtu.be', 'bilibili.com', 'vimeo.com', 'dailymotion.com', 'douyin.com', 'tiktok.com', 'twitch.tv'];
+    const audioSites = ['music.163.com', 'y.qq.com', 'spotify.com', 'soundcloud.com', 'music.apple.com'];
+    for (const d of videoSites) {
+      if (hostname === d || hostname.endsWith('.' + d)) return 'video-site';
+    }
+    for (const d of audioSites) {
+      if (hostname === d || hostname.endsWith('.' + d)) return 'audio-site';
+    }
+  } catch (e) {}
+  return 'webpage';
+}
 
 function getFromCache(url) {
-  const cached = CACHE.get(url);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+  const tier = detectCacheTier(url);
+  const store = cacheStores[tier] || cacheStores.default;
+  const tierConfig = CACHE_TIERS[tier] || CACHE_TIERS.default;
+  const stats = cacheStats.tierStats[tier] || cacheStats.tierStats.default;
+
+  const cached = store.get(url);
+  if (cached && Date.now() - cached.timestamp < tierConfig.ttl) {
+    cacheStats.hits++;
+    stats.hits++;
+    cached.accessCount = (cached.accessCount || 0) + 1;
+    cached.lastAccess = Date.now();
     return cached.data;
   }
-  CACHE.delete(url);
+
+  if (cached) {
+    store.delete(url);
+    stats.size = store.size;
+  }
+
+  cacheStats.misses++;
+  stats.misses++;
   return null;
 }
 
 function setToCache(url, data) {
-  if (CACHE.size >= CACHE_MAX_SIZE) {
-    const oldestKey = CACHE.keys().next().value;
-    CACHE.delete(oldestKey);
+  const tier = detectCacheTier(url);
+  const store = cacheStores[tier] || cacheStores.default;
+  const tierConfig = CACHE_TIERS[tier] || CACHE_TIERS.default;
+  const stats = cacheStats.tierStats[tier] || cacheStats.tierStats.default;
+
+  if (store.size >= tierConfig.maxSize) {
+    let oldestKey = null;
+    let oldestAccess = Infinity;
+    for (const [key, val] of store) {
+      const score = val.lastAccess || val.timestamp;
+      if (score < oldestAccess) {
+        oldestAccess = score;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey) {
+      store.delete(oldestKey);
+      cacheStats.evictions++;
+      stats.evictions++;
+    }
   }
-  CACHE.set(url, {
+
+  store.set(url, {
     data: data,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    lastAccess: Date.now(),
+    accessCount: 0
   });
+
+  cacheStats.sets++;
+  stats.sets++;
+  stats.size = store.size;
 }
+
+function getCacheStats() {
+  const tierDetails = {};
+  for (const tier of Object.keys(cacheStores)) {
+    const store = cacheStores[tier];
+    const stats = cacheStats.tierStats[tier];
+    const config = CACHE_TIERS[tier] || CACHE_TIERS.default;
+    let expiredCount = 0;
+    const now = Date.now();
+    for (const [, val] of store) {
+      if (now - val.timestamp >= config.ttl) expiredCount++;
+    }
+    tierDetails[tier] = {
+      size: store.size,
+      maxSize: config.maxSize,
+      ttl: config.ttl,
+      hits: stats.hits,
+      misses: stats.misses,
+      evictions: stats.evictions,
+      sets: stats.sets,
+      hitRate: stats.hits + stats.misses > 0 ? (stats.hits / (stats.hits + stats.misses) * 100).toFixed(1) : '0.0',
+      expiredCount: expiredCount
+    };
+  }
+
+  const totalSize = Object.values(cacheStores).reduce((sum, s) => sum + s.size, 0);
+  const totalMaxSize = Object.values(CACHE_TIERS).reduce((sum, c) => sum + c.maxSize, 0);
+
+  return {
+    totalSize: totalSize,
+    totalMaxSize: totalMaxSize,
+    totalHits: cacheStats.hits,
+    totalMisses: cacheStats.misses,
+    totalEvictions: cacheStats.evictions,
+    totalSets: cacheStats.sets,
+    totalHitRate: cacheStats.hits + cacheStats.misses > 0
+      ? (cacheStats.hits / (cacheStats.hits + cacheStats.misses) * 100).toFixed(1)
+      : '0.0',
+    tiers: tierDetails
+  };
+}
+
+function clearAllCache() {
+  for (const tier of Object.keys(cacheStores)) {
+    cacheStores[tier].clear();
+    cacheStats.tierStats[tier] = { hits: 0, misses: 0, evictions: 0, sets: 0, size: 0 };
+  }
+  cacheStats.hits = 0;
+  cacheStats.misses = 0;
+  cacheStats.evictions = 0;
+  cacheStats.sets = 0;
+}
+
+function cleanupExpiredCache() {
+  const now = Date.now();
+  for (const tier of Object.keys(cacheStores)) {
+    const store = cacheStores[tier];
+    const config = CACHE_TIERS[tier] || CACHE_TIERS.default;
+    const stats = cacheStats.tierStats[tier];
+    for (const [key, val] of store) {
+      if (now - val.timestamp >= config.ttl) {
+        store.delete(key);
+        stats.evictions++;
+        cacheStats.evictions++;
+      }
+    }
+    stats.size = store.size;
+  }
+}
+
+setInterval(cleanupExpiredCache, 60 * 1000);
 
 function extractReadableContent(html, url) {
   let content = html;
@@ -695,6 +855,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true;
   }
+
+  if (request.action === 'getCacheStats') {
+    sendResponse({ success: true, data: getCacheStats() });
+    return false;
+  }
+
+  if (request.action === 'clearCache') {
+    clearAllCache();
+    sendResponse({ success: true });
+    return false;
+  }
 });
 
 const TYPE_COMPATIBILITY = {
@@ -1137,7 +1308,9 @@ chrome.runtime.onInstalled.addListener(() => {
         content: true,
         security: true,
         footer: true
-      }
+      },
+      preset: 'default',
+      smartContrast: true
     },
     shortcuts: {
       enabled: true,

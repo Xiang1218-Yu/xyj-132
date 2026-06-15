@@ -49,6 +49,10 @@
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M16.86 14.88l3.06-3.06a1 1 0 000-1.41l-3.06-3.06a1 1 0 00-1.41 0l-3.06 3.06a1 1 0 000 1.41l3.06 3.06a1 1 0 001.41 0zm-1.41-4.47l1.65 1.65-1.65 1.65-1.65-1.65 1.65-1.65zM3 15h5v2H3zM3 11h5v2H3zM3 7h5v2H3zM14.5 3h-5v2h5zM12 5h-2v8h2V5zm0 10h-2v6h2v-6z"/></svg>
           规则
         </button>
+        <button class="tab-btn" data-tab="cache">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+          缓存
+        </button>
       </div>
     </div>
 
@@ -348,6 +352,32 @@
               <option value="dark">深色模式</option>
               <option value="system">跟随系统</option>
             </select>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>主题预设</h2>
+          <div class="select-container">
+            <label for="theme_preset">预设方案</label>
+            <select id="theme_preset">
+              <option value="default">默认紫蓝</option>
+              <option value="ocean">深海蓝</option>
+              <option value="sunset">日落橙</option>
+              <option value="forest">森林绿</option>
+              <option value="rose">玫瑰红</option>
+              <option value="midnight">午夜深蓝</option>
+            </select>
+            <p class="section-desc" style="margin-top:6px;font-size:11px;">选择预设后自动填充主色调和辅助色</p>
+          </div>
+          <div class="toggle-group" style="margin-top: 12px;">
+            <label class="toggle-item">
+              <input type="checkbox" id="theme_smartContrast" checked>
+              <span class="toggle-slider"></span>
+              <span class="toggle-label">
+                <span class="toggle-title">智能对比度</span>
+                <span class="toggle-desc">自动调整颜色确保与页面背景色有足够对比度</span>
+              </span>
+            </label>
           </div>
         </div>
 
@@ -761,6 +791,56 @@
       <div class="popup-footer" id="rulesFooter" style="display:none;">
         <button class="btn-secondary" id="cancelRuleBtn">取消</button>
         <button class="btn-primary" id="saveRuleBtn">保存规则</button>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-cache" style="display:none;">
+      <div class="popup-content">
+        <div class="section">
+          <div class="section-header-with-action">
+            <h2>缓存统计</h2>
+            <button class="btn-small-secondary" id="refreshCacheStats">刷新</button>
+          </div>
+        </div>
+
+        <div class="section" id="cacheStatsOverall">
+          <h2>总览</h2>
+          <div class="cache-stats-grid">
+            <div class="cache-stat-item">
+              <span class="cache-stat-label">总缓存数</span>
+              <span class="cache-stat-value" id="cacheTotalSize">-</span>
+            </div>
+            <div class="cache-stat-item">
+              <span class="cache-stat-label">总容量</span>
+              <span class="cache-stat-value" id="cacheTotalMaxSize">-</span>
+            </div>
+            <div class="cache-stat-item">
+              <span class="cache-stat-label">命中率</span>
+              <span class="cache-stat-value" id="cacheTotalHitRate">-</span>
+            </div>
+            <div class="cache-stat-item">
+              <span class="cache-stat-label">命中/未命中</span>
+              <span class="cache-stat-value" id="cacheTotalHitsMisses">-</span>
+            </div>
+            <div class="cache-stat-item">
+              <span class="cache-stat-label">淘汰次数</span>
+              <span class="cache-stat-value" id="cacheTotalEvictions">-</span>
+            </div>
+            <div class="cache-stat-item">
+              <span class="cache-stat-label">写入次数</span>
+              <span class="cache-stat-value" id="cacheTotalSets">-</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="section" id="cacheStatsTiers">
+          <h2>分级详情</h2>
+          <div id="cacheTierList" class="cache-tier-list"></div>
+        </div>
+
+        <div class="section" style="margin-top:12px;">
+          <button class="btn-primary" id="clearCacheBtn" style="width:100%;">清空所有缓存</button>
+        </div>
       </div>
     </div>
 

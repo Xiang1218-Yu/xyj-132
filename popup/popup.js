@@ -51,7 +51,9 @@ const DEFAULT_SETTINGS = {
       content: true,
       security: true,
       footer: true
-    }
+    },
+    preset: 'default',
+    smartContrast: true
   },
   previewRules: []
 };
@@ -498,6 +500,13 @@ function loadThemeSettings(theme) {
   document.getElementById('theme_shadowIntensity').value = theme.shadowIntensity;
   document.getElementById('theme_fontSize').value = theme.fontSize;
 
+  if (document.getElementById('theme_preset')) {
+    document.getElementById('theme_preset').value = theme.preset || 'default';
+  }
+  if (document.getElementById('theme_smartContrast')) {
+    document.getElementById('theme_smartContrast').checked = theme.smartContrast !== false;
+  }
+
   const orderList = document.getElementById('componentOrderList');
   orderList.innerHTML = '';
   theme.componentOrder.forEach(comp => {
@@ -639,6 +648,9 @@ function saveThemeSettings() {
       componentVisibility[comp] = toggle.checked;
     });
 
+    const presetEl = document.getElementById('theme_preset');
+    const smartContrastEl = document.getElementById('theme_smartContrast');
+
     const theme = {
       ...result.theme,
       mode: document.getElementById('theme_mode').value,
@@ -648,7 +660,9 @@ function saveThemeSettings() {
       shadowIntensity: document.getElementById('theme_shadowIntensity').value,
       fontSize: document.getElementById('theme_fontSize').value,
       componentOrder: componentOrder,
-      componentVisibility: componentVisibility
+      componentVisibility: componentVisibility,
+      preset: presetEl ? presetEl.value : (result.theme.preset || 'default'),
+      smartContrast: smartContrastEl ? smartContrastEl.checked : (result.theme.smartContrast !== false)
     };
 
     chrome.storage.sync.set({ ...result, theme }, () => {
@@ -1087,6 +1101,96 @@ function init() {
       secondaryColor.value = e.target.value;
     }
   });
+
+  const THEME_PRESETS_MAP = {
+    default: { primaryColor: '#667eea', secondaryColor: '#764ba2' },
+    ocean: { primaryColor: '#0ea5e9', secondaryColor: '#06b6d4' },
+    sunset: { primaryColor: '#f97316', secondaryColor: '#ef4444' },
+    forest: { primaryColor: '#10b981', secondaryColor: '#059669' },
+    rose: { primaryColor: '#f43f5e', secondaryColor: '#e11d48' },
+    midnight: { primaryColor: '#6366f1', secondaryColor: '#4f46e5' }
+  };
+
+  const presetSelect = document.getElementById('theme_preset');
+  if (presetSelect) {
+    presetSelect.addEventListener('change', (e) => {
+      const preset = THEME_PRESETS_MAP[e.target.value];
+      if (preset) {
+        primaryColor.value = preset.primaryColor;
+        primaryColorText.value = preset.primaryColor;
+        secondaryColor.value = preset.secondaryColor;
+        secondaryColorText.value = preset.secondaryColor;
+      }
+    });
+  }
+
+  function loadCacheStats() {
+    chrome.runtime.sendMessage({ action: 'getCacheStats' }, (response) => {
+      if (response && response.success && response.data) {
+        const stats = response.data;
+        document.getElementById('cacheTotalSize').textContent = stats.totalSize;
+        document.getElementById('cacheTotalMaxSize').textContent = stats.totalMaxSize;
+        document.getElementById('cacheTotalHitRate').textContent = stats.totalHitRate + '%';
+        document.getElementById('cacheTotalHitsMisses').textContent = stats.totalHits + ' / ' + stats.totalMisses;
+        document.getElementById('cacheTotalEvictions').textContent = stats.totalEvictions;
+        document.getElementById('cacheTotalSets').textContent = stats.totalSets;
+
+        const tierList = document.getElementById('cacheTierList');
+        if (tierList) {
+          const tierNames = {
+            webpage: '网页', image: '图片', video: '视频文件', 'video-site': '视频网站',
+            audio: '音频文件', 'audio-site': '音频网站', snapshot: '快照', default: '默认'
+          };
+          tierList.innerHTML = '';
+          for (const [key, tier] of Object.entries(stats.tiers)) {
+            const fillPercent = tier.maxSize > 0 ? (tier.size / tier.maxSize * 100) : 0;
+            const ttlMin = Math.round(tier.ttl / 60000);
+            const div = document.createElement('div');
+            div.className = 'cache-tier-item';
+            div.innerHTML = `
+              <div class="cache-tier-header">
+                <span class="cache-tier-name">${tierNames[key] || key}</span>
+                <span class="cache-tier-hit-rate">${tier.hitRate}%</span>
+              </div>
+              <div class="cache-tier-bar">
+                <div class="cache-tier-bar-fill" style="width:${fillPercent}%"></div>
+              </div>
+              <div class="cache-tier-details">
+                <span>容量: <span class="cache-tier-detail-value">${tier.size}/${tier.maxSize}</span></span>
+                <span>TTL: <span class="cache-tier-detail-value">${ttlMin}分钟</span></span>
+                <span>淘汰: <span class="cache-tier-detail-value">${tier.evictions}</span></span>
+              </div>
+            `;
+            tierList.appendChild(div);
+          }
+        }
+      }
+    });
+  }
+
+  const refreshCacheBtn = document.getElementById('refreshCacheStats');
+  if (refreshCacheBtn) {
+    refreshCacheBtn.addEventListener('click', loadCacheStats);
+  }
+
+  const clearCacheBtn = document.getElementById('clearCacheBtn');
+  if (clearCacheBtn) {
+    clearCacheBtn.addEventListener('click', () => {
+      chrome.runtime.sendMessage({ action: 'clearCache' }, (response) => {
+        if (response && response.success) {
+          showToast('缓存已清空');
+          loadCacheStats();
+        }
+      });
+    });
+  }
+
+  const cacheTab = document.querySelector('[data-tab="cache"]');
+  if (cacheTab) {
+    cacheTab.addEventListener('click', () => {
+      setTimeout(loadCacheStats, 100);
+    });
+  }
 
   const favSearchInput = document.getElementById('favoritesSearch');
   if (favSearchInput) {

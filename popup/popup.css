@@ -2354,3 +2354,147 @@ textarea#blacklist:focus {
     color: #d1d5db;
   }
 }
+
+.cache-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.cache-stat-item {
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cache-stat-label {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.cache-stat-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.cache-tier-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cache-tier-item {
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.cache-tier-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.cache-tier-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.cache-tier-hit-rate {
+  font-size: 12px;
+  font-weight: 600;
+  color: #667eea;
+}
+
+.cache-tier-bar {
+  height: 4px;
+  background: #e5e7eb;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.cache-tier-bar-fill {
+  height: 100%;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.cache-tier-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.cache-tier-detail-value {
+  font-weight: 500;
+  color: #374151;
+}
+
+.btn-small-secondary {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  color: #374151;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-small-secondary:hover {
+  background: #f3f4f6;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cache-stat-item {
+    background: #1f2937;
+  }
+
+  .cache-stat-label {
+    color: #9ca3af;
+  }
+
+  .cache-stat-value {
+    color: #f9fafb;
+  }
+
+  .cache-tier-item {
+    background: #1f2937;
+  }
+
+  .cache-tier-name {
+    color: #f9fafb;
+  }
+
+  .cache-tier-details {
+    color: #9ca3af;
+  }
+
+  .cache-tier-detail-value {
+    color: #e5e7eb;
+  }
+
+  .cache-tier-bar {
+    background: #374151;
+  }
+
+  .btn-small-secondary {
+    background: #1f2937;
+    border-color: #4b5563;
+    color: #d1d5db;
+  }
+
+  .btn-small-secondary:hover {
+    background: #374151;
+  }
+}

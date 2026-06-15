@@ -52,7 +52,9 @@
       borderRadius: '12px',
       shadowIntensity: 'medium',
       fontSize: '14px',
-      componentOrder: ['header', 'content', 'footer', 'security']
+      componentOrder: ['header', 'content', 'footer', 'security'],
+      preset: 'default',
+      smartContrast: true
     },
     shortcuts: {
       enabled: true,
@@ -66,6 +68,138 @@
     },
     previewRules: []
   };
+
+  const THEME_PRESETS = {
+    default: {
+      name: '默认紫蓝',
+      primaryColor: '#667eea',
+      secondaryColor: '#764ba2',
+      lightBg: '#ffffff',
+      lightHeader: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      darkBg: '#1f2937',
+      darkHeader: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+    },
+    ocean: {
+      name: '深海蓝',
+      primaryColor: '#0ea5e9',
+      secondaryColor: '#06b6d4',
+      lightBg: '#ffffff',
+      lightHeader: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)',
+      darkBg: '#0c1e2e',
+      darkHeader: 'linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%)'
+    },
+    sunset: {
+      name: '日落橙',
+      primaryColor: '#f97316',
+      secondaryColor: '#ef4444',
+      lightBg: '#ffffff',
+      lightHeader: 'linear-gradient(135deg, #f97316 0%, #ef4444 100%)',
+      darkBg: '#1c1008',
+      darkHeader: 'linear-gradient(135deg, #f97316 0%, #ef4444 100%)'
+    },
+    forest: {
+      name: '森林绿',
+      primaryColor: '#10b981',
+      secondaryColor: '#059669',
+      lightBg: '#ffffff',
+      lightHeader: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+      darkBg: '#0a1f16',
+      darkHeader: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+    },
+    rose: {
+      name: '玫瑰红',
+      primaryColor: '#f43f5e',
+      secondaryColor: '#e11d48',
+      lightBg: '#ffffff',
+      lightHeader: 'linear-gradient(135deg, #f43f5e 0%, #e11d48 100%)',
+      darkBg: '#1f0a10',
+      darkHeader: 'linear-gradient(135deg, #f43f5e 0%, #e11d48 100%)'
+    },
+    midnight: {
+      name: '午夜深蓝',
+      primaryColor: '#6366f1',
+      secondaryColor: '#4f46e5',
+      lightBg: '#ffffff',
+      lightHeader: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+      darkBg: '#0f0e24',
+      darkHeader: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)'
+    }
+  };
+
+  function hexToRgb(hex) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+    } : { r: 0, g: 0, b: 0 };
+  }
+
+  function getRelativeLuminance(r, g, b) {
+    const [rs, gs, bs] = [r, g, b].map(c => {
+      c = c / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+  }
+
+  function getContrastRatio(color1, color2) {
+    const l1 = getRelativeLuminance(color1.r, color1.g, color1.b);
+    const l2 = getRelativeLuminance(color2.r, color2.g, color2.b);
+    const lighter = Math.max(l1, l2);
+    const darker = Math.min(l1, l2);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  function getBestTextColor(bgHex) {
+    const bg = hexToRgb(bgHex);
+    const white = { r: 255, g: 255, b: 255 };
+    const black = { r: 0, g: 0, b: 0 };
+    const whiteContrast = getContrastRatio(bg, white);
+    const blackContrast = getContrastRatio(bg, black);
+    return whiteContrast >= blackContrast ? '#ffffff' : '#111827';
+  }
+
+  function getSmartContrastColors(primaryHex, secondaryHex, bgColorHex) {
+    const bg = hexToRgb(bgColorHex);
+    const primary = hexToRgb(primaryHex);
+    const primaryLum = getRelativeLuminance(primary.r, primary.g, primary.b);
+    const bgLum = getRelativeLuminance(bg.r, bg.g, bg.b);
+    const contrastRatio = getContrastRatio(primary, bg);
+
+    let adjustedPrimary = primaryHex;
+    let adjustedSecondary = secondaryHex;
+    let textColor = getBestTextColor(bgColorHex);
+
+    if (contrastRatio < 3) {
+      if (bgLum > 0.5) {
+        adjustedPrimary = darkenColor(primaryHex, 0.3);
+        adjustedSecondary = darkenColor(secondaryHex, 0.3);
+      } else {
+        adjustedPrimary = lightenColor(primaryHex, 0.4);
+        adjustedSecondary = lightenColor(secondaryHex, 0.4);
+      }
+      textColor = getBestTextColor(bgColorHex);
+    }
+
+    return { adjustedPrimary, adjustedSecondary, textColor, contrastRatio };
+  }
+
+  function darkenColor(hex, amount) {
+    const rgb = hexToRgb(hex);
+    const r = Math.max(0, Math.round(rgb.r * (1 - amount)));
+    const g = Math.max(0, Math.round(rgb.g * (1 - amount)));
+    const b = Math.max(0, Math.round(rgb.b * (1 - amount)));
+    return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
+  }
+
+  function lightenColor(hex, amount) {
+    const rgb = hexToRgb(hex);
+    const r = Math.min(255, Math.round(rgb.r + (255 - rgb.r) * amount));
+    const g = Math.min(255, Math.round(rgb.g + (255 - rgb.g) * amount));
+    const b = Math.min(255, Math.round(rgb.b + (255 - rgb.b) * amount));
+    return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
+  }
 
   let settings = { ...DEFAULT_SETTINGS };
   let hoverTimer = null;
@@ -1586,20 +1720,45 @@
     panel.style.borderRadius = theme.borderRadius;
     panel.style.fontSize = theme.fontSize;
     
+    const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
+    const isDark = theme.mode === 'dark' || (theme.mode === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
     const header = panel.querySelector('.qlp-preview-header');
+
     if (header) {
       header.style.background = `linear-gradient(135deg, ${theme.primaryColor} 0%, ${theme.secondaryColor} 100%)`;
     }
 
-    if (theme.mode === 'dark') {
+    if (theme.smartContrast) {
+      const bgColor = isDark ? preset.darkBg : preset.lightBg;
+      const contrastResult = getSmartContrastColors(theme.primaryColor, theme.secondaryColor, bgColor);
+
+      if (header) {
+        header.style.background = `linear-gradient(135deg, ${contrastResult.adjustedPrimary} 0%, ${contrastResult.adjustedSecondary} 100%)`;
+        header.style.color = contrastResult.textColor;
+
+        const actionBtns = header.querySelectorAll('.qlp-action-btn');
+        actionBtns.forEach(btn => {
+          btn.style.color = contrastResult.textColor;
+          btn.style.background = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.18)';
+        });
+
+        const titleEl = header.querySelector('.qlp-preview-title');
+        if (titleEl) titleEl.style.color = contrastResult.textColor;
+      }
+
+      panel.style.setProperty('--qlp-primary-color', contrastResult.adjustedPrimary);
+      panel.style.setProperty('--qlp-secondary-color', contrastResult.adjustedSecondary);
+    }
+
+    if (isDark) {
       panel.classList.add('qlp-dark-theme');
-    } else if (theme.mode === 'light') {
-      panel.classList.remove('qlp-dark-theme');
+      if (preset.darkBg && preset.darkBg !== '#1f2937') {
+        panel.style.background = preset.darkBg;
+      }
     } else {
-      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-        panel.classList.add('qlp-dark-theme');
-      } else {
-        panel.classList.remove('qlp-dark-theme');
+      panel.classList.remove('qlp-dark-theme');
+      if (preset.lightBg && preset.lightBg !== '#ffffff') {
+        panel.style.background = preset.lightBg;
       }
     }
   }
